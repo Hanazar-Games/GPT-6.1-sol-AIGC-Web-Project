@@ -33,7 +33,7 @@ npm run preview
 
 ## GitHub Pages
 
-`.github/workflows/pages.yml` 在推送到 `main` 时运行物理测试、构建并部署 `dist/`。在仓库 **Settings → Pages → Source** 中选择 **GitHub Actions**。首次部署需要仓库的 Pages 权限已开启。
+`.github/workflows/pages.yml` 在推送到 `main` 时运行物理测试、构建并部署 `dist/`。在仓库 **Settings → Pages → Source** 中选择 **GitHub Actions**。首次部署需要仓库的 Pages 权限已开启。若首次运行在部署阶段失败，启用后可在 Actions 中选择 **Re-run failed jobs**，复用已生成的构建产物。
 
 预期地址：<https://hanazar-games.github.io/GPT-6.1-sol-AIGC-Web-Project/>（仅在部署成功后可访问）。
 
