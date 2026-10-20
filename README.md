@@ -1,2 +1,50 @@
-# GPT-6.1-sol-AIGC-Web-Project
-GPT 6.1 sol AIGC Web Project
+# MIDNIGHT DRIFT · 午夜漂移
+
+原创 3D Web 漂移赛车游戏。霧雨峠的夜间闭环山路、一辆可换色的后驱跑车，以及属于你的漂移轨迹。
+
+## 游玩
+
+- **W / ↑** 油门，**S / ↓** 刹车与倒车
+- **A D / ← →** 转向，**Space** 手刹
+- **C** 切换三种镜头，**R** 返回最近的赛道路面
+- **Esc** 暂停，车库中 **Enter** 开始
+- 手机和平板提供多点触屏按钮。右上角音符按钮开启合成发动机与轮胎声音。
+
+先加速，入弯转向并轻点手刹，松开手刹后反打修正。连续漂移提高倍率，回正 1.6 秒后分数入账；护栏碰撞或重置车辆会清空尚未结算的连击。
+
+自由漂移不限时，挑战模式限时 120 秒。个人最高分保存在当前浏览器本地。
+
+## 本地运行
+
+需要 Node.js 22 或更高版本。
+
+```sh
+npm ci
+npm run dev
+```
+
+打开终端输出的本地地址。验证和生产构建：
+
+```sh
+npm test
+npm run build
+npm run preview
+```
+
+## GitHub Pages
+
+`.github/workflows/pages.yml` 在推送到 `main` 时运行物理测试、构建并部署 `dist/`。在仓库 **Settings → Pages → Source** 中选择 **GitHub Actions**。首次部署需要仓库的 Pages 权限已开启。
+
+预期地址：<https://hanazar-games.github.io/GPT-6.1-sol-AIGC-Web-Project/>（仅在部署成功后可访问）。
+
+Vite 使用相对资源路径，适配 GitHub Pages 项目子路径。游戏场景、车辆、轮胎烟雾与贴图均由代码生成；Three.js 随构建打包，无运行时 CDN 依赖。Google Fonts 仅提供可选字体，加载失败时使用系统后备字体。
+
+## 实现
+
+- Three.js / WebGL 2：程序化赛车、闭环样条赛道、森林、山脉、灯光、粒子与轮胎痕迹。
+- 120 Hz 固定步长：后驱街机驾驶、手刹失稳、侧向抓地、赛外减速和护栏碰撞。
+- 静态几何按材质合批，树木实例化，烟雾和轮胎痕迹复用固定资源池。
+- Web Audio 合成声音，默认静音；切出窗口自动暂停。
+- Node 内置测试覆盖驾驶稳定性、漂移触发、连击入账、碰撞与固定步长一致性。
+
+本项目采用 [MIT License](LICENSE)。依赖保留各自许可证。首版尚未经过真实移动设备性能测试。
