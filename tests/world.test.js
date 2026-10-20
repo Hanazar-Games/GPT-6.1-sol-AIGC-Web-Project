@@ -42,3 +42,20 @@ test("smoke and skid resource pools stay bounded", () => {
   for (let i = 0; i < 2200; i++) world.updateEffects(s, 0.04, true);
   assert.equal(world.scene.children.length, before);
 });
+test("new session clears pooled smoke and skid marks without losing resources", () => {
+  const s = { ...world.spawn(), vx: 10, vz: 10, speed: 15 };
+  world.updateEffects(s, 0.04, true);
+  const skids = world.scene.getObjectByName("skid-marks");
+  assert(skids.count > 0);
+  assert.equal(skids.frustumCulled, false);
+  world.resetEffects();
+  assert.equal(skids.count, 0);
+  const smoke = [];
+  world.scene.traverse((o) => {
+    if (o.name === "tire-smoke") smoke.push(o);
+  });
+  assert.equal(smoke.length, 100);
+  assert(smoke.every((o) => o.material.opacity === 0));
+  world.updateEffects(s, 0.04, true);
+  assert.equal(skids.count, 2);
+});

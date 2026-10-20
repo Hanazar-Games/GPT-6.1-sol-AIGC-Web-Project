@@ -29,6 +29,12 @@ export function stepCar(s, input, dt, road) {
   drive -= longitudinal * (0.075 + Math.abs(longitudinal) * 0.0038);
   if (offroad) drive -= longitudinal * 0.95;
   longitudinal = clamp(longitudinal + drive * dt, -9, 55);
+  if (input.brake && Math.abs(longitudinal) < 5) {
+    const braking = 18 * dt;
+    longitudinal =
+      Math.sign(longitudinal) * Math.max(0, Math.abs(longitudinal) - braking);
+    lateral *= Math.exp(-10 * dt);
+  }
   const yawRate =
     ((s.steer * longitudinal) / (14 + Math.abs(longitudinal) * 0.16)) *
     (handbrake ? 1.35 : 1);
@@ -68,6 +74,9 @@ export function resolveBarrier(s, nearest, halfWidth) {
   }
   s.vx *= 0.65;
   s.vz *= 0.65;
+  s.speed = Math.hypot(s.vx, s.vz);
+  s.slip = Math.abs(wrapAngle(Math.atan2(s.vx, s.vz) - s.yaw));
+  s.drifting = false;
   const hit = s.collisionCooldown === 0;
   s.collisionCooldown = 0.65;
   return hit;

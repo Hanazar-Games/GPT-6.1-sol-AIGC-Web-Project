@@ -56,3 +56,24 @@ test("barrier removes outward velocity and confines car", () => {
   assert(s.vx < 0);
   assert(!resolveBarrier(s, { x: 0, z: 0, distance: 20 }, 10));
 });
+test("collision immediately updates telemetry and cancels drift, including cooldown contacts", () => {
+  const s = createCarState(20, 0);
+  s.vx = 30;
+  s.speed = 30;
+  s.drifting = true;
+  resolveBarrier(s, { x: 0, z: 0, distance: 20 }, 10);
+  assert.equal(s.speed, Math.hypot(s.vx, s.vz));
+  assert(!s.drifting);
+  s.drifting = true;
+  resolveBarrier(s, { x: 0, z: 0, distance: 20 }, 10);
+  assert(!s.drifting);
+});
+test("handbrake holds the parked car even with the throttle pressed", () => {
+  const s = simulate(
+    createCarState(),
+    { throttle: true, steer: 0, brake: true },
+    5,
+  );
+  assert.equal(s.speed, 0);
+  assert.equal(s.z, 0);
+});

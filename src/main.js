@@ -11,6 +11,8 @@ import {
   nearestRoad,
   HALF_WIDTH,
   updateEffects,
+  resetEffects,
+  groundEffects,
   setBrake,
 } from "./world.js";
 import {
@@ -21,6 +23,8 @@ import {
   clamp,
 } from "./physics.js";
 import { EngineAudio } from "./audio.js";
+import { InputState } from "./input.js";
+import { SessionClock } from "./clock.js";
 const $ = (id) => document.getElementById(id);
 let renderer;
 try {
@@ -41,12 +45,12 @@ renderer.toneMapping = T.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.25;
 const camera = new T.PerspectiveCamera(48, innerWidth / innerHeight, 0.1, 1800);
 const audio = new EngineAudio();
-const keys = new Set();
+const keys = new InputState();
+const clock = new SessionClock();
 let playing = false,
   paused = false,
   mode = "free",
   cameraMode = 0,
-  remaining = 120,
   score = new DriftScore(),
   carState,
   menuTime = 0,
@@ -54,10 +58,12 @@ let playing = false,
   accumulator = 0,
   noticeUntil = 0,
   lap = 0,
-  checkpoint = 0;
+  checkpoint = 0,
+  contextLost = false;
 let best = 0;
 try {
-  best = Number(localStorage.getItem("midnight-best")) || 0;
+  const stored = Number(localStorage.getItem("midnight-best"));
+  best = Number.isSafeInteger(stored) && stored >= 0 ? stored : 0;
 } catch {}
 const format = (n) => Math.floor(n).toString().padStart(6, "0");
 $("menu-best").textContent = format(best);
@@ -65,21 +71,34 @@ const p = spawn();
 carState = createCarState(p.x, p.z, p.yaw);
 car.position.set(p.x, 0, p.z);
 car.rotation.y = p.yaw;
-const touchDevice = matchMedia("(pointer: coarse)").matches;
+const touchMedia = matchMedia("(any-pointer: coarse)");
+const touchDevice = () => touchMedia.matches;
+let previousFocus;
+let dialogKind = null;
 let onDialog = () => {};
 function dialog(kicker, title, body, action, callback) {
   $("dialog-kicker").textContent = kicker;
   $("dialog-title").textContent = title;
   $("dialog-body").innerHTML = body;
   $("dialog-action").innerHTML = action + "<span>↗</span>";
+  previousFocus = document.activeElement;
   $("overlay").classList.remove("hidden");
+  $("dialog-action").focus();
   onDialog = callback;
 }
-$("dialog-action").onclick = () => {
+function closeDialog() {
   $("overlay").classList.add("hidden");
+  dialogKind = null;
+  if (playing) $("world").focus({ preventScroll: true });
+  else previousFocus?.focus({ preventScroll: true });
+}
+$("dialog-action").onclick = () => {
+  if (contextLost) return;
+  closeDialog();
   onDialog();
 };
 function showHelp() {
+  dialogKind = "help";
   dialog(
     "DRIVER’S BRIEFING",
     "山路，交给你了。",
@@ -105,10 +124,17 @@ function saveBest() {
   }
 }
 function start() {
+  if (contextLost) return;
   clearInput();
   playing = true;
   paused = false;
-  remaining = 120;
+  audio.setActive(true);
+  clock.reset(mode);
+  accumulator = 0;
+  last = performance.now();
+  resetEffects();
+  wheels.forEach((wheel) => wheel.rotation.set(0, 0, 0));
+  car.rotation.z = 0;
   score = new DriftScore();
   lap = 0;
   checkpoint = 0;
@@ -120,7 +146,12 @@ function start() {
   $("timer").classList.toggle("hidden", mode !== "challenge");
   $("session-mode").textContent =
     mode === "free" ? "FREE RUN / 自由漂移" : "TIME ATTACK / 限时挑战";
-  if (touchDevice) $("touch").classList.remove("hidden");
+  $("touch").classList.toggle("hidden", !touchDevice());
+  $("pause").disabled = false;
+  $("world").focus({ preventScroll: true });
+  dialogKind = null;
+  hudTime = Infinity;
+  updateHUD(0);
   resetCamera();
   notify("保持油门，前往第一个弯道", 4);
 }
@@ -130,40 +161,55 @@ function menu() {
   saveBest();
   playing = false;
   paused = false;
+  audio.setActive(false);
   clearInput();
   document.body.classList.remove("playing");
   $("hud").classList.add("hidden");
   $("touch").classList.add("hidden");
-  $("overlay").classList.add("hidden");
+  closeDialog();
+  $("start").focus({ preventScroll: true });
+  $("pause").disabled = true;
+}
+function resume() {
+  if (contextLost) return;
+  paused = false;
+  audio.setActive(true);
+  accumulator = 0;
+  last = performance.now();
+  closeDialog();
+  $("touch").classList.toggle("hidden", !touchDevice());
 }
 function togglePause() {
-  if (!playing || remaining <= 0) return;
+  if (!playing || clock.finished) return;
   if (paused) {
-    paused = false;
-    $("overlay").classList.add("hidden");
+    resume();
     return;
   }
   paused = true;
+  audio.setActive(false);
   clearInput();
+  $("touch").classList.add("hidden");
+  dialogKind = "pause";
   dialog(
     "TAKE A BREATHER",
     "暂停，夜还很长。",
     '<p>你的漂移记录已保留。准备好后，继续征服弯道。</p><button class="secondary" id="return-menu">结束本次驾驶 / 返回车库</button>',
     "继续驾驶",
-    () => {
-      paused = false;
-    },
+    resume,
   );
   $("return-menu").onclick = menu;
 }
 $("pause").onclick = togglePause;
 $("sound").onclick = async () => {
+  $("sound").disabled = true;
   try {
     const enabled = await audio.toggle();
     $("sound").innerHTML = enabled ? "♪" : '♪<span class="off-slash">／</span>';
     $("sound").setAttribute("aria-label", enabled ? "关闭声音" : "开启声音");
   } catch {
     notify("浏览器暂时无法播放音频");
+  } finally {
+    $("sound").disabled = false;
   }
 };
 for (const b of document.querySelectorAll("[data-mode]"))
@@ -193,6 +239,39 @@ function reset() {
   notify("已返回赛道 · 当前连击已清空");
 }
 addEventListener("keydown", (e) => {
+  if (!$("overlay").classList.contains("hidden")) {
+    if (e.code === "Escape" && !e.repeat) {
+      e.preventDefault();
+      if (dialogKind === "help") closeDialog();
+      else if (dialogKind === "pause") resume();
+    }
+    if (e.code === "Tab") {
+      const buttons = [
+        ...$("overlay").querySelectorAll("button:not(:disabled)"),
+      ];
+      const first = buttons[0],
+        end = buttons.at(-1);
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        end.focus();
+      } else if (!e.shiftKey && document.activeElement === end) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    return;
+  }
+  if (e.code === "Escape") {
+    if (!e.repeat) togglePause();
+    return;
+  }
+  const interactive = e.target.closest?.("button,a,input,select,textarea");
+  if (e.code === "Enter" && !playing && !interactive) {
+    e.preventDefault();
+    if (!e.repeat) start();
+    return;
+  }
+  if (!playing || paused || (interactive && e.code === "Space")) return;
   if (
     ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(
       e.code,
@@ -200,30 +279,23 @@ addEventListener("keydown", (e) => {
   )
     e.preventDefault();
   if (e.repeat) return;
-  if (e.code === "Escape") {
-    if (!$("overlay").classList.contains("hidden") && !paused) {
-      $("overlay").classList.add("hidden");
-      return;
-    }
-    togglePause();
-    return;
-  }
-  if (
-    e.code === "Enter" &&
-    !playing &&
-    $("overlay").classList.contains("hidden")
-  )
-    start();
-  if (playing && !paused) {
-    if (e.code === "KeyR") reset();
-    if (e.code === "KeyC") {
-      cameraMode = (cameraMode + 1) % 3;
-      notify(["追尾镜头", "远景镜头", "引擎盖镜头"][cameraMode]);
-    }
-    keys.add(e.code);
-  }
+  if (e.code === "KeyR") reset();
+  if (e.code === "KeyC") cycleCamera();
+  keys.press("key:" + e.code, e.code);
 });
-addEventListener("keyup", (e) => keys.delete(e.code));
+addEventListener("keyup", (e) => keys.release("key:" + e.code));
+function cycleCamera() {
+  if (!playing || paused) return;
+  cameraMode = (cameraMode + 1) % 3;
+  notify(["追尾镜头", "远景镜头", "引擎盖镜头"][cameraMode]);
+}
+$("touch-camera").onclick = cycleCamera;
+$("touch-reset").onclick = () => {
+  if (playing && !paused) reset();
+};
+touchMedia.addEventListener("change", () =>
+  $("touch").classList.toggle("hidden", !touchDevice() || !playing || paused),
+);
 addEventListener("blur", () => {
   clearInput();
   if (playing && !paused) togglePause();
@@ -236,13 +308,13 @@ for (const b of document.querySelectorAll("[data-key]")) {
     e.preventDefault();
     if (!playing || paused) return;
     b.setPointerCapture(e.pointerId);
-    keys.add(b.dataset.key);
+    keys.press("pointer:" + e.pointerId, b.dataset.key);
     b.classList.add("pressed");
   });
   for (const ev of ["pointerup", "pointercancel", "lostpointercapture"])
-    b.addEventListener(ev, () => {
-      keys.delete(b.dataset.key);
-      b.classList.remove("pressed");
+    b.addEventListener(ev, (e) => {
+      keys.release("pointer:" + e.pointerId);
+      b.classList.toggle("pressed", keys.has(b.dataset.key));
     });
 }
 function controls() {
@@ -257,8 +329,11 @@ function controls() {
 }
 function finish() {
   score.bank();
+  dialogKind = "result";
+  $("pause").disabled = true;
   saveBest();
   paused = true;
+  audio.setActive(false);
   clearInput();
   $("touch").classList.add("hidden");
   dialog(
@@ -279,14 +354,11 @@ function step(dt) {
     score.reset();
     notify("擦碰护栏 · 连击中断");
   }
+  if (after.distance > HALF_WIDTH) carState.drifting = false;
   score.update(carState, dt);
   if (score.lastBank) {
     saveBest();
     notify(`+${score.lastBank.toLocaleString()} 漂移分数已入账`);
-  }
-  if (mode === "challenge") {
-    remaining = Math.max(0, remaining - dt);
-    if (remaining === 0) finish();
   }
   // Four ordered sectors prevent farming laps by reversing across the start line.
   const sector = Math.floor((after.index / samples.length) * 4);
@@ -314,6 +386,7 @@ function resetCamera() {
 function updateCamera(dt) {
   const s = carState;
   if (!playing) {
+    car.visible = true;
     menuTime += dt;
     const angle = s.yaw + Math.PI * 0.8 + Math.sin(menuTime * 0.12) * 0.18;
     const portrait = innerWidth < 700;
@@ -341,7 +414,8 @@ function updateCamera(dt) {
   } else {
     camera.clearViewOffset();
     const distance = cameraMode === 1 ? 15 : cameraMode === 2 ? -0.9 : 9;
-    const height = cameraMode === 1 ? 8 : cameraMode === 2 ? 1.35 : 4.4;
+    const height = cameraMode === 1 ? 8 : cameraMode === 2 ? 1.18 : 4.4;
+    car.visible = cameraMode !== 2;
     desired.set(
       s.x - Math.sin(s.yaw) * distance,
       height,
@@ -433,23 +507,25 @@ function updateHUD(dt) {
     : nearestRoad(carState.x, carState.z).distance > HALF_WIDTH
       ? "OFF ROAD"
       : "GRIP";
-  const sec = Math.ceil(remaining);
+  const sec = Math.ceil(clock.remaining);
   $("timer").textContent =
     String(Math.floor(sec / 60)).padStart(2, "0") +
     ":" +
     String(sec % 60).padStart(2, "0");
-  $("timer").style.color = remaining < 15 ? "#ff8166" : "";
+  $("timer").style.color = clock.remaining < 15 ? "#ff8166" : "";
   if (performance.now() > noticeUntil) $("notice").textContent = "";
   drawMap();
 }
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min((now - last) / 1000 || 0.016, 0.08);
+  const elapsed = Math.max(0, (now - last) / 1000);
+  const dt = Math.min(elapsed, 0.08);
   last = now;
   if (playing && !paused) {
-    accumulator += dt;
+    const activeTime = clock.advance(elapsed);
+    accumulator += Math.min(activeTime, 0.25);
     let count = 0;
-    while (accumulator >= 1 / 120 && count++ < 12) {
+    while (accumulator >= 1 / 120 && count++ < 30) {
       step(1 / 120);
       accumulator -= 1 / 120;
       if (paused) {
@@ -457,19 +533,26 @@ function frame(now) {
         break;
       }
     }
+    if (clock.finished) finish();
   } else accumulator = 0;
   car.position.set(carState.x, 0, carState.z);
   car.rotation.y = carState.yaw;
+  groundEffects.position.copy(car.position);
+  groundEffects.rotation.y = carState.yaw;
   car.rotation.z = T.MathUtils.lerp(
     car.rotation.z,
     -carState.steer * carState.speed * 0.0009,
     dt * 5,
   );
+  const signedSpeed =
+    carState.vx * Math.sin(carState.yaw) + carState.vz * Math.cos(carState.yaw);
   for (const wheel of wheels) {
-    wheel.rotation.x += playing && !paused ? (carState.speed * dt) / 0.37 : 0;
+    wheel.rotation.x += playing && !paused ? (signedSpeed * dt) / 0.37 : 0;
     if (wheel.position.z > 0) wheel.rotation.y = carState.steer * 0.35;
   }
-  setBrake(playing && (keys.has("Space") || keys.has("KeyS")));
+  setBrake(
+    playing && (keys.has("Space") || keys.has("KeyS") || keys.has("ArrowDown")),
+  );
   updateEffects(
     carState,
     paused ? 0 : dt,
@@ -490,6 +573,19 @@ addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
 });
+$("world").addEventListener("webglcontextlost", (event) => {
+  event.preventDefault();
+  contextLost = true;
+  if (playing && !paused) togglePause();
+  $("start").disabled = true;
+  $("dialog-action").disabled = true;
+});
+$("world").addEventListener("webglcontextrestored", () => {
+  contextLost = false;
+  $("start").disabled = false;
+  $("dialog-action").disabled = false;
+  notify("3D 场景已恢复，可以继续驾驶", 4);
+});
 resetCamera();
 requestAnimationFrame(frame);
 $("loading").classList.add("hidden");
@@ -500,7 +596,7 @@ window.__DRIFT__ = {
       playing,
       paused,
       mode,
-      remaining,
+      remaining: clock.remaining,
       score: score.total,
       chain: score.chain,
       car: { ...carState },

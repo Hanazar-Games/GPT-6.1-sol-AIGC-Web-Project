@@ -402,7 +402,9 @@ const shadow = new T.Mesh(
 );
 shadow.rotation.x = -Math.PI / 2;
 shadow.position.y = 0.085;
-car.add(shadow);
+export const groundEffects = new T.Group();
+scene.add(groundEffects);
+groundEffects.add(shadow);
 const beamGeo = new T.PlaneGeometry(5, 28);
 const beamMat = new T.MeshBasicMaterial({
   color: "#c3d8bb",
@@ -415,7 +417,7 @@ for (const s of [-1, 1]) {
   const beam = new T.Mesh(beamGeo, beamMat);
   beam.rotation.x = -Math.PI / 2;
   beam.position.set(s * 0.6, 0.09, 15);
-  car.add(beam);
+  groundEffects.add(beam);
 }
 export function setBrake(on) {
   tailMat.color.set(on ? "#ff8d78" : "#ff3c42");
@@ -445,6 +447,7 @@ const smoke = Array.from({ length: 100 }, () => {
       depthWrite: false,
     }),
   );
+  m.name = "tire-smoke";
   scene.add(m);
   return { m, life: 0, vx: 0, vz: 0 };
 });
@@ -460,9 +463,22 @@ const skids = new T.InstancedMesh(
   1800,
 );
 skids.count = 0;
+// Instance positions move around the whole circuit; a cached early bound clips later marks.
+skids.frustumCulled = false;
+skids.name = "skid-marks";
 scene.add(skids);
 let skidIndex = 0,
   emitTime = 0;
+export function resetEffects() {
+  skidIndex = 0;
+  smokeIndex = 0;
+  emitTime = 0;
+  skids.count = 0;
+  for (const p of smoke) {
+    p.life = 0;
+    p.m.material.opacity = 0;
+  }
+}
 export function updateEffects(s, dt, active) {
   for (const p of smoke) {
     if (p.life <= 0) continue;
@@ -481,6 +497,7 @@ export function updateEffects(s, dt, active) {
       z = s.z + Math.cos(s.yaw) * -1.3 - Math.sin(s.yaw) * side * 0.85;
     const p = smoke[smokeIndex++ % smoke.length];
     p.life = 1.6;
+    p.m.material.opacity = 0.23;
     p.vx = s.vx * 0.08;
     p.vz = s.vz * 0.08;
     p.m.position.set(x, 0.35, z);

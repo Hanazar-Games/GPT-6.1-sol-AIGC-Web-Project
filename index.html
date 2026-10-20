@@ -15,7 +15,7 @@
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   </head>
   <body>
-    <canvas id="world" aria-label="3D 赛车游戏场景"></canvas>
+    <canvas id="world" tabindex="-1" aria-label="3D 赛车游戏场景"></canvas>
     <div class="vignette"></div>
     <header>
       <a class="brand" href="./" aria-label="Midnight Drift 首页"
@@ -36,6 +36,7 @@
           ♪<span class="off-slash">／</span></button
         ><button
           id="pause"
+          disabled
           class="icon-button"
           title="暂停 Esc"
           aria-label="暂停游戏"
@@ -131,8 +132,8 @@
         <kbd>W A S D</kbd> 驾驶 <kbd>SPACE</kbd> 手刹 <kbd>C</kbd> 镜头
         <kbd>R</kbd> 回到赛道 <kbd>ESC</kbd> 暂停
       </div>
-      <div id="notice" class="notice"></div>
     </div>
+    <div id="notice" class="notice" role="status" aria-live="polite"></div>
     <footer id="menu-footer">
       <span
         ><i></i> ALL SYSTEMS READY <span class="footer-separator">/</span> WEBGL
@@ -140,7 +141,12 @@
       ><span>BUILT FOR THE CORNERS. <b>© 2026 MIDNIGHT</b></span>
     </footer>
     <div id="overlay" class="overlay hidden">
-      <section class="dialog">
+      <section
+        class="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dialog-title"
+      >
         <span class="eyebrow" id="dialog-kicker">DRIVER'S BRIEFING</span>
         <h2 id="dialog-title">驾驶指南</h2>
         <div id="dialog-body"></div>
@@ -150,6 +156,10 @@
       </section>
     </div>
     <div id="touch" class="touch hidden">
+      <div class="touch-tools">
+        <button id="touch-camera" aria-label="切换镜头">镜头</button
+        ><button id="touch-reset" aria-label="重置车辆到赛道">回正</button>
+      </div>
       <div>
         <button data-key="KeyA" aria-label="左转">◀</button
         ><button data-key="KeyD" aria-label="右转">▶</button>

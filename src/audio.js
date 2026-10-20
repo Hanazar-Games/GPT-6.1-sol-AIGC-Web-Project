@@ -1,6 +1,7 @@
 export class EngineAudio {
   constructor() {
     this.enabled = false;
+    this.active = false;
     this.ctx = null;
   }
   async toggle() {
@@ -52,14 +53,24 @@ export class EngineAudio {
     }
     await this.ctx.resume();
     this.enabled = !this.enabled;
-    this.master.gain.setTargetAtTime(
-      this.enabled ? 0.5 : 0,
-      this.ctx.currentTime,
-      0.1,
-    );
+    this.applyVolume();
     return this.enabled;
   }
+  applyVolume() {
+    if (!this.ctx) return;
+    this.master.gain.setTargetAtTime(
+      this.enabled && this.active ? 0.5 : 0,
+      this.ctx.currentTime,
+      0.04,
+    );
+  }
+  setActive(active) {
+    if (this.active === active) return;
+    this.active = active;
+    this.applyVolume();
+  }
   update(speed, throttle, drift, playing) {
+    this.setActive(playing);
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     const rpm = 45 + (speed % 12) * 9 + (throttle ? 18 : 0);

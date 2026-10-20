@@ -1,4 +1,52 @@
-@import url("https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800;900&family=Barlow:wght@400;500;600;700;800&display=swap");
+@font-face {
+  font-family: "Barlow";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/barlow-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/barlow-600-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/barlow-800-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/barlow-condensed-600-italic.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  font-style: italic;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/barlow-condensed-800-italic.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/barlow-condensed-600-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/barlow-condensed-800-normal.woff2") format("woff2");
+}
 :root {
   font-family: Barlow, "PingFang SC", "Microsoft YaHei", sans-serif;
   color: #f4f5ee;
@@ -928,5 +976,120 @@ body.playing #menu-footer {
   }
   .loading > div {
     animation: none;
+  }
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+body {
+  overscroll-behavior: none;
+}
+#world {
+  touch-action: none;
+}
+#world:focus {
+  outline: none;
+}
+.overlay {
+  padding: 20px;
+  overflow-y: auto;
+}
+.dialog {
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+}
+.touch {
+  bottom: max(20px, env(safe-area-inset-bottom));
+}
+.touch > .touch-tools {
+  position: absolute;
+  right: 0;
+  bottom: 100px;
+}
+.touch-tools button {
+  height: 32px;
+  min-width: 48px;
+  border-radius: 5px;
+  font-size: 10px;
+}
+@media (pointer: coarse) {
+  .drive-help {
+    display: none;
+  }
+  .telemetry {
+    bottom: max(165px, calc(env(safe-area-inset-bottom) + 145px));
+  }
+  .mini-map {
+    bottom: max(130px, calc(env(safe-area-inset-bottom) + 110px));
+  }
+}
+@media (max-width: 380px) {
+  .menu {
+    top: 19%;
+  }
+  h1 {
+    font-size: 78px;
+  }
+  .menu-actions {
+    gap: 12px;
+  }
+  .primary {
+    min-width: 175px;
+  }
+  .car-spec {
+    bottom: 8%;
+  }
+  .car-spec > div:not(.swatches) {
+    display: none;
+  }
+  .best {
+    margin-top: 10px;
+  }
+}
+@media (max-height: 530px) and (pointer: coarse) {
+  .telemetry {
+    bottom: 120px;
+  }
+  .mini-map {
+    bottom: 90px;
+  }
+}
+.notice {
+  z-index: 5;
+  pointer-events: none;
+}
+@media (max-width: 700px) {
+  .menu {
+    top: 18%;
+    bottom: 125px;
+    width: 86%;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .car-spec {
+    bottom: 55px;
+    left: 7%;
+    right: 7%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .car-spec > .eyebrow,
+  .car-spec > div:not(.swatches) {
+    display: none;
+  }
+  .car-spec h2 {
+    margin: 0;
+    font-size: 28px;
+  }
+  .car-spec .swatches {
+    margin: 0;
+  }
+  .swatches button {
+    width: 22px;
+    height: 22px;
   }
 }
