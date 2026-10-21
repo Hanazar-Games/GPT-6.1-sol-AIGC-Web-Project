@@ -103,3 +103,42 @@ test("game transitions, controls and wall-time countdown work together", () => {
   env.click("dialog-action");
   assert(!state().paused);
 });
+test("notifications expire in the garage as well as while driving", () => {
+  env.key("Escape");
+  env.click("return-menu");
+  env.click("return-menu");
+  assert(!state().playing);
+  env.event(env.nodes.get("world"), "webglcontextrestored");
+  assert(env.nodes.get("notice").textContent.length > 0);
+  env.tick(3);
+  assert(env.nodes.get("notice").textContent.length > 0);
+  env.tick(2);
+  assert.equal(env.nodes.get("notice").textContent, "");
+});
+test("browser shortcuts do not steer the car or get trapped inside dialogs", () => {
+  env.click("start");
+  env.tick(0.016);
+  const visible = world.car.visible;
+  env.key("KeyC", "keydown", env.nodes.get("world"), { ctrlKey: true });
+  env.tick(0.016);
+  assert.equal(world.car.visible, visible, "Ctrl+C must not change cameras");
+  env.key("KeyW", "keydown", env.nodes.get("world"), { metaKey: true });
+  env.tick(0.1);
+  assert.equal(
+    state().car.speed,
+    0,
+    "browser modifier shortcuts must not press the throttle",
+  );
+  env.key("Escape");
+  env.click("return-menu");
+  env.click("return-menu");
+  env.click("help");
+  const tab = env.key("Tab", "keydown", env.nodes.get("dialog-action"), {
+    ctrlKey: true,
+  });
+  assert(
+    !tab.defaultPrevented,
+    "Ctrl+Tab must remain available to the browser",
+  );
+  env.key("Escape");
+});

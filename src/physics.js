@@ -92,8 +92,9 @@ export function resolveBarrier(s, nearest, halfWidth) {
   s.speed = Math.hypot(s.vx, s.vz);
   s.slip = Math.abs(wrapAngle(Math.atan2(s.vx, s.vz) - s.yaw));
   s.drifting = false;
-  if (outward > 0.1) s.collisionCooldown = 0.65;
-  return hit;
+  s.collisionCooldown = 0.65;
+  // Always report physical contact; cooldown only limits impact feedback/friction.
+  return true;
 }
 export class DriftScore {
   constructor() {

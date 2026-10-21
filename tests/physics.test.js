@@ -105,3 +105,15 @@ test("glancing impact preserves travel along the rail and allows an inward escap
   assert.equal(s.vx, vx);
   assert.equal(s.vz, vz, "inward velocity should not be damped again");
 });
+test("another guardrail contact during cooldown still cancels a drift chain", () => {
+  const s = createCarState(14, 0);
+  s.vx = 10;
+  assert(resolveBarrier(s, { x: 0, z: 0, distance: 14 }, 10));
+  assert(s.collisionCooldown > 0);
+  s.x = 14;
+  s.vx = 10;
+  assert(
+    resolveBarrier(s, { x: 0, z: 0, distance: 14 }, 10),
+    "physical contacts must not be suppressed by notification cooldown",
+  );
+});

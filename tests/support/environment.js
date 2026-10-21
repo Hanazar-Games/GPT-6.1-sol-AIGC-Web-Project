@@ -131,10 +131,10 @@ export function createEnvironment() {
     nodes,
     buttons,
     document,
-    key(code, type = "keydown", target = document.body) {
+    key(code, type = "keydown", target = document.body, modifiers = {}) {
       const e = new Event(type, { cancelable: true });
       Object.defineProperty(e, "target", { value: target });
-      Object.assign(e, { code, repeat: false });
+      Object.assign(e, { code, repeat: false, ...modifiers });
       windowEvents.dispatchEvent(e);
       return e;
     },

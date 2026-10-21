@@ -243,6 +243,7 @@ function reset() {
   notify("已返回赛道 · 本圈不计圈速，过线后重新计时", 3);
 }
 addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (!$("overlay").classList.contains("hidden")) {
     if (e.code === "Escape" && !e.repeat) {
       e.preventDefault();
@@ -357,9 +358,10 @@ function step(dt) {
     road = nearestRoad(carState.x, carState.z);
   stepCar(carState, input, dt, road);
   const after = nearestRoad(carState.x, carState.z);
+  const announceImpact = carState.collisionCooldown === 0;
   if (resolveBarrier(carState, after, HALF_WIDTH)) {
     score.reset();
-    notify("擦碰护栏 · 连击中断");
+    if (announceImpact) notify("擦碰护栏 · 连击中断");
   }
   if (after.distance > HALF_WIDTH) carState.drifting = false;
   score.update(carState, dt);
@@ -523,7 +525,6 @@ function updateHUD(dt) {
     ":" +
     String(sec % 60).padStart(2, "0");
   $("timer").style.color = clock.remaining < 15 ? "#ff8166" : "";
-  if (performance.now() > noticeUntil) $("notice").textContent = "";
   drawMap();
 }
 function frame(now) {
@@ -531,6 +532,10 @@ function frame(now) {
   const elapsed = Math.max(0, (now - last) / 1000);
   const dt = Math.min(elapsed, 0.08);
   last = now;
+  if (noticeUntil > 0 && now >= noticeUntil) {
+    $("notice").textContent = "";
+    noticeUntil = 0;
+  }
   if (playing && !paused) {
     const activeTime = clock.advance(elapsed);
     accumulator += Math.min(activeTime, 0.25);

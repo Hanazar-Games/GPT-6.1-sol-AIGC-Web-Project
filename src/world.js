@@ -371,6 +371,7 @@ for (const x of [-0.96, 0.96])
   for (const z of [-1.3, 1.3]) {
     const wheel = new T.Group();
     wheel.position.set(x, 0.39, z);
+    wheel.rotation.order = "YXZ";
     const tire = new T.Mesh(tireGeo, rubber);
     tire.rotation.z = Math.PI / 2;
     wheel.add(tire);
@@ -449,6 +450,7 @@ const smoke = Array.from({ length: 100 }, () => {
     }),
   );
   m.name = "tire-smoke";
+  m.visible = false;
   scene.add(m);
   return { m, life: 0, vx: 0, vz: 0 };
 });
@@ -477,35 +479,44 @@ export function resetEffects() {
   skids.count = 0;
   for (const p of smoke) {
     p.life = 0;
+    p.m.visible = false;
     p.m.material.opacity = 0;
   }
 }
 export function updateEffects(s, dt, active) {
   for (const p of smoke) {
     if (p.life <= 0) continue;
-    p.life -= dt;
+    p.life = Math.max(0, p.life - dt);
+    p.m.visible = p.life > 0;
     p.m.position.x += p.vx * dt;
     p.m.position.z += p.vz * dt;
     p.m.position.y += dt * 0.8;
     p.m.scale.setScalar(1 + (1.6 - p.life) * 2.8);
     p.m.material.opacity = Math.max(0, p.life / 1.6) * 0.23;
   }
+  if (!active) {
+    emitTime = 0;
+    return;
+  }
   emitTime += dt;
-  if (!active || emitTime < 0.035) return;
+  if (emitTime < 0.035) return;
+  const interval = emitTime;
   emitTime = 0;
+  const markYaw = Math.hypot(s.vx, s.vz) > 0.1 ? Math.atan2(s.vx, s.vz) : s.yaw;
   for (const side of [-1, 1]) {
     const x = s.x + Math.sin(s.yaw) * -1.3 + Math.cos(s.yaw) * side * 0.85,
       z = s.z + Math.cos(s.yaw) * -1.3 - Math.sin(s.yaw) * side * 0.85;
     const p = smoke[smokeIndex++ % smoke.length];
     p.life = 1.6;
+    p.m.visible = true;
     p.m.material.opacity = 0.23;
     p.vx = s.vx * 0.08;
     p.vz = s.vz * 0.08;
     p.m.position.set(x, 0.35, z);
     p.m.scale.setScalar(1);
     dummy.position.set(x, 0.09, z);
-    dummy.rotation.set(-Math.PI / 2, 0, -s.yaw);
-    dummy.scale.set(1, Math.max(1, s.speed * 0.055), 1);
+    dummy.rotation.set(-Math.PI / 2, 0, markYaw);
+    dummy.scale.set(1, Math.max(1, (s.speed * interval) / 0.8), 1);
     dummy.updateMatrix();
     skids.setMatrixAt(skidIndex++ % 1800, dummy.matrix);
     skids.count = Math.min(skidIndex, 1800);
