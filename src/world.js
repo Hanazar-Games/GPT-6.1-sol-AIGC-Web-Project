@@ -69,6 +69,7 @@ export function nearestRoad(x, z) {
         x: px,
         z: pz,
         index: i,
+        progress: (i + t) / samples.length,
         distance: Math.sqrt(d),
         halfWidth: HALF_WIDTH,
       };

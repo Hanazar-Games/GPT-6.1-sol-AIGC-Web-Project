@@ -25,6 +25,7 @@ import {
 import { EngineAudio } from "./audio.js";
 import { InputState } from "./input.js";
 import { SessionClock } from "./clock.js";
+import { LapTracker, formatLap } from "./laps.js";
 const $ = (id) => document.getElementById(id);
 let renderer;
 try {
@@ -57,8 +58,8 @@ let playing = false,
   last = 0,
   accumulator = 0,
   noticeUntil = 0,
-  lap = 0,
-  checkpoint = 0,
+  laps,
+  sessionStats,
   contextLost = false;
 let best = 0;
 try {
@@ -69,6 +70,8 @@ const format = (n) => Math.floor(n).toString().padStart(6, "0");
 $("menu-best").textContent = format(best);
 const p = spawn();
 carState = createCarState(p.x, p.z, p.yaw);
+laps = new LapTracker(nearestRoad(p.x, p.z).progress);
+sessionStats = { distance: 0, topSpeed: 0, bestChain: 0 };
 car.position.set(p.x, 0, p.z);
 car.rotation.y = p.yaw;
 const touchMedia = matchMedia("(any-pointer: coarse)");
@@ -136,10 +139,10 @@ function start() {
   wheels.forEach((wheel) => wheel.rotation.set(0, 0, 0));
   car.rotation.z = 0;
   score = new DriftScore();
-  lap = 0;
-  checkpoint = 0;
   const s = spawn();
   carState = createCarState(s.x, s.z, s.yaw);
+  laps = new LapTracker(nearestRoad(s.x, s.z).progress);
+  sessionStats = { distance: 0, topSpeed: 0, bestChain: 0 };
   document.body.classList.add("playing");
   $("hud").classList.remove("hidden");
   $("overlay").classList.add("hidden");
@@ -180,7 +183,7 @@ function resume() {
   $("touch").classList.toggle("hidden", !touchDevice());
 }
 function togglePause() {
-  if (!playing || clock.finished) return;
+  if (!playing || clock.finished || dialogKind === "result") return;
   if (paused) {
     resume();
     return;
@@ -193,11 +196,11 @@ function togglePause() {
   dialog(
     "TAKE A BREATHER",
     "暂停，夜还很长。",
-    '<p>你的漂移记录已保留。准备好后，继续征服弯道。</p><button class="secondary" id="return-menu">结束本次驾驶 / 返回车库</button>',
+    '<p>你的漂移记录已保留。准备好后，继续征服弯道。</p><button class="secondary" id="return-menu">结束驾驶 / 查看成绩</button>',
     "继续驾驶",
     resume,
   );
-  $("return-menu").onclick = menu;
+  $("return-menu").onclick = finish;
 }
 $("pause").onclick = togglePause;
 $("sound").onclick = async () => {
@@ -235,8 +238,9 @@ function reset() {
     t = tangents[near.index];
   carState = createCarState(near.x, near.z, Math.atan2(t.x, t.z));
   score.reset();
+  laps.reanchor(near.progress, clock.elapsed);
   resetCamera();
-  notify("已返回赛道 · 当前连击已清空");
+  notify("已返回赛道 · 本圈不计圈速，过线后重新计时", 3);
 }
 addEventListener("keydown", (e) => {
   if (!$("overlay").classList.contains("hidden")) {
@@ -337,15 +341,18 @@ function finish() {
   clearInput();
   $("touch").classList.add("hidden");
   dialog(
-    "SESSION COMPLETE / 120 SEC",
+    mode === "challenge"
+      ? "SESSION COMPLETE / 120 SEC"
+      : "FREE RUN / SESSION COMPLETE",
     "山路记住了你。",
-    `<span class="eyebrow">TOTAL DRIFT POINTS</span><div class="result-score">${format(score.total)}</div><p>个人最佳 ${format(best)}<br>每一次反打，都是下一次完美漂移的开始。</p><button class="secondary" id="return-menu">返回车库</button>`,
+    `<span class="eyebrow">TOTAL DRIFT POINTS</span><div class="result-score">${format(score.total)}</div><div class="result-grid"><div><span>驾驶时间</span><b>${formatLap(clock.elapsed)}</b></div><div><span>行驶距离</span><b>${(sessionStats.distance / 1000).toFixed(2)} km</b></div><div><span>最高速度</span><b>${Math.round(sessionStats.topSpeed * 3.6)} km/h</b></div><div><span>最佳连击</span><b>${Math.floor(sessionStats.bestChain).toLocaleString()}</b></div><div><span>完成圈数</span><b>${laps.laps}</b></div><div><span>最佳圈速</span><b>${formatLap(laps.best)}</b></div></div><p>个人最佳 ${format(best)}</p><button class="secondary" id="return-menu">返回车库</button>`,
     "再跑一次",
     start,
   );
   $("return-menu").onclick = menu;
 }
 function step(dt) {
+  sessionStats.bestChain = Math.max(sessionStats.bestChain, score.chain);
   const input = controls(),
     road = nearestRoad(carState.x, carState.z);
   stepCar(carState, input, dt, road);
@@ -356,18 +363,15 @@ function step(dt) {
   }
   if (after.distance > HALF_WIDTH) carState.drifting = false;
   score.update(carState, dt);
+  sessionStats.bestChain = Math.max(sessionStats.bestChain, score.chain);
+  sessionStats.distance += carState.speed * dt;
+  sessionStats.topSpeed = Math.max(sessionStats.topSpeed, carState.speed);
   if (score.lastBank) {
     saveBest();
     notify(`+${score.lastBank.toLocaleString()} 漂移分数已入账`);
   }
-  // Four ordered sectors prevent farming laps by reversing across the start line.
-  const sector = Math.floor((after.index / samples.length) * 4);
-  if (sector === (checkpoint + 1) % 4) {
-    checkpoint = sector;
-    if (sector === 0) {
-      lap++;
-      notify(`LAP ${lap} · 继续保持节奏`);
-    }
+  if (laps.observe(after.progress, clock.elapsed)) {
+    notify(`LAP ${laps.laps} · ${formatLap(laps.last)}`, 3);
   }
 }
 const desired = new T.Vector3(),
@@ -507,6 +511,12 @@ function updateHUD(dt) {
     : nearestRoad(carState.x, carState.z).distance > HALF_WIDTH
       ? "OFF ROAD"
       : "GRIP";
+  $("lap-number").textContent = String(laps.laps + 1).padStart(2, "0");
+  $("lap-time").textContent = formatLap(laps.current(clock.elapsed));
+  $("lap-best").textContent = formatLap(laps.best);
+  $("lap-status").textContent = laps.valid
+    ? "CURRENT LAP"
+    : "OUT LAP / 过线计时";
   const sec = Math.ceil(clock.remaining);
   $("timer").textContent =
     String(Math.floor(sec / 60)).padStart(2, "0") +
@@ -599,6 +609,10 @@ window.__DRIFT__ = {
       remaining: clock.remaining,
       score: score.total,
       chain: score.chain,
+      laps: laps.laps,
+      bestLap: laps.best,
+      elapsed: clock.elapsed,
+      stats: { ...sessionStats },
       car: { ...carState },
       drawCalls: renderer.info.render.calls,
     };

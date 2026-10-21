@@ -64,6 +64,11 @@ test("game transitions, controls and wall-time countdown work together", () => {
   assert.equal(state().car.speed, 0);
   env.key("Escape");
   env.click("return-menu");
+  assert(state().paused);
+  assert(env.nodes.get("dialog-body").innerHTML.includes("最佳圈速"));
+  env.key("Escape");
+  assert(state().paused, "free-run results cannot resume a finished session");
+  env.click("return-menu");
   assert(!state().playing);
   env.tick(0.016);
   assert(world.car.visible);

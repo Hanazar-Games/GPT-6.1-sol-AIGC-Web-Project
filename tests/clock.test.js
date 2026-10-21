@@ -7,6 +7,7 @@ test("challenge ends after 120 active seconds at low and high frame rates", () =
     for (let frame = 0; frame < fps * 120; frame++) clock.advance(1 / fps);
     assert.equal(clock.remaining, 0);
     assert(clock.finished);
+    assert.equal(clock.elapsed, 120);
   }
 });
 test("finishing frame cannot simulate beyond the remaining challenge time", () => {
@@ -15,8 +16,11 @@ test("finishing frame cannot simulate beyond the remaining challenge time", () =
   assert(Math.abs(clock.advance(5) - 0.1) < 1e-10);
   assert.equal(clock.advance(5), 0);
   assert(clock.finished);
+  assert.equal(clock.elapsed, 120);
   clock.reset("free");
+  assert.equal(clock.elapsed, 0);
   clock.advance(1000);
   assert.equal(clock.remaining, 120);
+  assert.equal(clock.elapsed, 1000);
   assert(!clock.finished);
 });

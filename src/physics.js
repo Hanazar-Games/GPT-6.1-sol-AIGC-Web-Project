@@ -61,24 +61,38 @@ export function stepCar(s, input, dt, road) {
   s.collisionCooldown = Math.max(0, s.collisionCooldown - dt);
 }
 export function resolveBarrier(s, nearest, halfWidth) {
-  if (nearest.distance < halfWidth + 2.8) return false;
   const dx = s.x - nearest.x,
     dz = s.z - nearest.z;
-  const d = Math.hypot(dx, dz) || 1;
-  s.x = nearest.x + (dx / d) * (halfWidth + 2.6);
-  s.z = nearest.z + (dz / d) * (halfWidth + 2.6);
-  const outward = (s.vx * dx) / d + (s.vz * dz) / d;
+  const distance = Math.hypot(dx, dz);
+  if (distance < 1e-8) return false;
+  const nx = dx / distance,
+    nz = dz / distance;
+  // Guardrails sit three metres outside the road. Account for the whole rotated
+  // coupe, including its nose/tail during a sideways slide, rather than its centre.
+  const forwardProjection = Math.abs(
+    nx * Math.sin(s.yaw) + nz * Math.cos(s.yaw),
+  );
+  const sideProjection = Math.abs(nx * Math.cos(s.yaw) - nz * Math.sin(s.yaw));
+  const clearance =
+    halfWidth + 3 - (2.15 * forwardProjection + 1.05 * sideProjection) - 0.12;
+  if (distance <= clearance) return false;
+  s.x = nearest.x + nx * (clearance - 0.04);
+  s.z = nearest.z + nz * (clearance - 0.04);
+  const outward = s.vx * nx + s.vz * nz;
+  const hit = outward > 0.1 && s.collisionCooldown === 0;
   if (outward > 0) {
-    s.vx -= (1.35 * outward * dx) / d;
-    s.vz -= (1.35 * outward * dz) / d;
+    s.vx -= 1.15 * outward * nx;
+    s.vz -= 1.15 * outward * nz;
+    // Friction applies once per impact; a car sliding along the rail can recover.
+    if (hit) {
+      s.vx *= 0.88;
+      s.vz *= 0.88;
+    }
   }
-  s.vx *= 0.65;
-  s.vz *= 0.65;
   s.speed = Math.hypot(s.vx, s.vz);
   s.slip = Math.abs(wrapAngle(Math.atan2(s.vx, s.vz) - s.yaw));
   s.drifting = false;
-  const hit = s.collisionCooldown === 0;
-  s.collisionCooldown = 0.65;
+  if (outward > 0.1) s.collisionCooldown = 0.65;
   return hit;
 }
 export class DriftScore {

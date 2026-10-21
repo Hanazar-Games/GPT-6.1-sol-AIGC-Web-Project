@@ -1093,3 +1093,82 @@ body {
     height: 22px;
   }
 }
+
+.lap-stats {
+  position: fixed;
+  left: 48px;
+  top: 255px;
+  width: 172px;
+  border-top: 1px solid #ffffff25;
+  padding-top: 13px;
+}
+.lap-stats > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.lap-stats span {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: #bbc9c2;
+}
+.lap-stats b {
+  color: var(--acid);
+  margin-left: 5px;
+}
+.lap-stats small {
+  font-size: 7px;
+  letter-spacing: 1px;
+  color: #8ca099;
+}
+.lap-stats strong {
+  display: block;
+  font:
+    500 32px "Barlow Condensed",
+    sans-serif;
+  letter-spacing: 1px;
+  margin: 4px 0;
+  font-variant-numeric: tabular-nums;
+}
+.lap-stats > small > span {
+  font-size: 9px;
+  margin-left: 8px;
+}
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+  margin-top: 20px;
+}
+.result-grid span {
+  display: block;
+  font-size: 10px;
+  color: #8ca099;
+  margin-bottom: 5px;
+}
+.result-grid b {
+  font-size: 17px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 700px) {
+  .lap-stats {
+    left: 24px;
+    top: 195px;
+    width: 145px;
+  }
+  .lap-stats strong {
+    font-size: 26px;
+  }
+}
+@media (max-height: 530px) {
+  .lap-stats {
+    top: 65px;
+    left: auto;
+    right: 24px;
+    width: 150px;
+  }
+  .lap-stats strong {
+    font-size: 25px;
+  }
+}

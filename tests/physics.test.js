@@ -61,10 +61,14 @@ test("collision immediately updates telemetry and cancels drift, including coold
   s.vx = 30;
   s.speed = 30;
   s.drifting = true;
+  s.x = 20;
+  s.vx = 30;
   resolveBarrier(s, { x: 0, z: 0, distance: 20 }, 10);
   assert.equal(s.speed, Math.hypot(s.vx, s.vz));
   assert(!s.drifting);
   s.drifting = true;
+  s.x = 20;
+  s.vx = 30;
   resolveBarrier(s, { x: 0, z: 0, distance: 20 }, 10);
   assert(!s.drifting);
 });
@@ -76,4 +80,28 @@ test("handbrake holds the parked car even with the throttle pressed", () => {
   );
   assert.equal(s.speed, 0);
   assert.equal(s.z, 0);
+});
+test("rotated body stays inside the physical guardrail", () => {
+  for (const yaw of [0, Math.PI / 4, Math.PI / 2, -Math.PI / 3]) {
+    const s = createCarState(14, 0, yaw);
+    s.vx = 20;
+    resolveBarrier(s, { x: 0, z: 0, distance: 14 }, 10);
+    const extent =
+      2.15 * Math.abs(Math.sin(yaw)) + 1.05 * Math.abs(Math.cos(yaw));
+    assert(s.x + extent < 13, "nose, tail and sides must all clear the rail");
+  }
+});
+test("glancing impact preserves travel along the rail and allows an inward escape", () => {
+  const s = createCarState(14, 0);
+  s.vx = 3;
+  s.vz = 25;
+  resolveBarrier(s, { x: 0, z: 0, distance: 14 }, 10);
+  assert(s.vx < 0);
+  assert(s.vz > 20, "a light scrape must not repeatedly stop the car");
+  s.x = 14;
+  const vx = s.vx,
+    vz = s.vz;
+  resolveBarrier(s, { x: 0, z: 0, distance: 14 }, 10);
+  assert.equal(s.vx, vx);
+  assert.equal(s.vz, vz, "inward velocity should not be damped again");
 });
