@@ -142,3 +142,25 @@ test("browser shortcuts do not steer the car or get trapped inside dialogs", () 
   );
   env.key("Escape");
 });
+test("instruments share the engine model and pause or reset preserves correct telemetry", () => {
+  env.click("start");
+  env.key("KeyW");
+  env.tick(0.2);
+  assert.equal(env.nodes.get("gear").textContent, String(state().engine.gear));
+  assert.equal(
+    parseFloat(env.nodes.get("rpm").style.width),
+    (state().engine.rpm / 7500) * 100,
+  );
+  assert(state().engine.rpm > 900);
+  env.key("Escape");
+  const engine = state().engine;
+  env.tick(5);
+  assert.deepEqual(state().engine, engine);
+  env.click("dialog-action");
+  env.click("touch-reset");
+  assert.equal(state().engine.gear, 0);
+  assert.equal(state().engine.rpm, 900);
+  env.key("Escape");
+  env.click("return-menu");
+  env.click("return-menu");
+});

@@ -1,5 +1,6 @@
 import * as T from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { createRoadQuery } from "./road-query.js";
 export const HALF_WIDTH = 10;
 export const scene = new T.Scene();
 scene.background = new T.Color("#111d2c");
@@ -47,36 +48,7 @@ export const tangents = samples.map((p, i) =>
     .sub(samples[(i - 1 + samples.length) % samples.length])
     .normalize(),
 );
-export function nearestRoad(x, z) {
-  let best = Infinity,
-    result;
-  for (let i = 0; i < samples.length; i++) {
-    const a = samples[i],
-      b = samples[(i + 1) % samples.length];
-    const dx = b.x - a.x,
-      dz = b.z - a.z,
-      t = T.MathUtils.clamp(
-        ((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz),
-        0,
-        1,
-      );
-    const px = a.x + dx * t,
-      pz = a.z + dz * t,
-      d = (x - px) ** 2 + (z - pz) ** 2;
-    if (d < best) {
-      best = d;
-      result = {
-        x: px,
-        z: pz,
-        index: i,
-        progress: (i + t) / samples.length,
-        distance: Math.sqrt(d),
-        halfWidth: HALF_WIDTH,
-      };
-    }
-  }
-  return result;
-}
+export const nearestRoad = createRoadQuery(samples, HALF_WIDTH);
 function ribbon(offset, width, mat, y = 0.02) {
   const positions = [],
     indices = [];

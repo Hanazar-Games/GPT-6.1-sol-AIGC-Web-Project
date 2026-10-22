@@ -29,6 +29,7 @@ import { LapTracker, formatLap } from "./laps.js";
 import { DriverProfile, PROFILE_KEY } from "./profile.js";
 import { RenderQuality, RenderSchedule } from "./quality.js";
 import { createMinimap } from "./minimap.js";
+import { Drivetrain, REDLINE_RPM } from "./drivetrain.js";
 const $ = (id) => document.getElementById(id);
 let renderer;
 try {
@@ -48,6 +49,7 @@ renderer.toneMapping = T.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.25;
 const camera = new T.PerspectiveCamera(48, innerWidth / innerHeight, 0.1, 1800);
 const audio = new EngineAudio();
+const drivetrain = new Drivetrain();
 const keys = new InputState();
 const inputButtons = [...document.querySelectorAll("[data-key]")];
 const arrowAliases = {
@@ -260,6 +262,7 @@ function start() {
   score = new DriftScore();
   const s = spawn();
   carState = createCarState(s.x, s.z, s.yaw);
+  drivetrain.reset();
   laps = new LapTracker(nearestRoad(s.x, s.z).progress);
   sessionStats = { distance: 0, topSpeed: 0, bestChain: 0 };
   document.body.classList.add("playing");
@@ -365,6 +368,7 @@ function reset() {
   const near = nearestRoad(carState.x, carState.z),
     t = tangents[near.index];
   carState = createCarState(near.x, near.z, Math.atan2(t.x, t.z));
+  drivetrain.reset();
   score.reset();
   laps.reanchor(near.progress, clock.elapsed);
   resetCamera();
@@ -532,6 +536,7 @@ function step(dt) {
     if (announceImpact) notify("擦碰护栏 · 连击中断");
   }
   if (after.distance > HALF_WIDTH) carState.drifting = false;
+  drivetrain.update(carState, input, dt);
   score.update(carState, dt);
   sessionStats.bestChain = Math.max(sessionStats.bestChain, score.chain);
   sessionStats.distance += carState.speed * dt;
@@ -625,16 +630,13 @@ function updateHUD(dt) {
   $("speed").textContent = Math.round(carState.speed * 3.6)
     .toString()
     .padStart(3, "0");
-  const forward =
-    carState.vx * Math.sin(carState.yaw) + carState.vz * Math.cos(carState.yaw);
   $("gear").textContent =
-    carState.speed < 0.8
+    drivetrain.gear === 0
       ? "N"
-      : forward < -0.5
+      : drivetrain.gear < 0
         ? "R"
-        : Math.min(6, Math.floor(carState.speed / 11) + 1);
-  $("rpm").style.width =
-    (carState.speed < 0.8 ? 6 : 35 + ((carState.speed % 11) / 11) * 65) + "%";
+        : String(drivetrain.gear);
+  $("rpm").style.width = (drivetrain.rpm / REDLINE_RPM) * 100 + "%";
   $("score").textContent = format(score.total);
   $("drift").classList.toggle("active", score.chain > 5);
   $("chain").textContent = "+" + Math.floor(score.chain).toLocaleString();
@@ -722,12 +724,7 @@ function frame(now) {
   );
   updateCamera(dt);
   if (playing) updateHUD(dt);
-  audio.update(
-    carState.speed,
-    keys.has("KeyW") || keys.has("ArrowUp"),
-    carState.drifting,
-    playing && !paused,
-  );
+  audio.update(drivetrain, carState.drifting, playing && !paused);
   if (
     renderSchedule.shouldRender(now, {
       active: playing && !paused,
@@ -787,6 +784,11 @@ window.__DRIFT__ = {
       elapsed: clock.elapsed,
       stats: { ...sessionStats },
       car: { ...carState },
+      engine: {
+        gear: drivetrain.gear,
+        rpm: drivetrain.rpm,
+        load: drivetrain.load,
+      },
       drawCalls: renderer.info.render.calls,
       renderedFrames,
       resolution: quality.ratio,

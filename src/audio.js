@@ -5,6 +5,14 @@ export class EngineAudio {
     this.ctx = null;
   }
   async toggle() {
+    if (this.enabled) {
+      this.enabled = false;
+      this.applyVolume();
+      try {
+        await this.ctx.suspend?.();
+      } catch {}
+      return false;
+    }
     if (!this.ctx) {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return false;
@@ -14,7 +22,7 @@ export class EngineAudio {
       this.master.connect(this.ctx.destination);
       this.engine = this.ctx.createOscillator();
       this.engine.type = "sawtooth";
-      const filter = this.ctx.createBiquadFilter();
+      const filter = (this.filter = this.ctx.createBiquadFilter());
       filter.type = "lowpass";
       filter.frequency.value = 420;
       this.engineGain = this.ctx.createGain();
@@ -52,7 +60,7 @@ export class EngineAudio {
       noise.start();
     }
     await this.ctx.resume();
-    this.enabled = !this.enabled;
+    this.enabled = true;
     this.applyVolume();
     return this.enabled;
   }
@@ -69,18 +77,20 @@ export class EngineAudio {
     this.active = active;
     this.applyVolume();
   }
-  update(speed, throttle, drift, playing) {
+  update(engine, drift, playing) {
     this.setActive(playing);
-    if (!this.ctx) return;
+    if (!this.ctx || !this.enabled || !playing) return;
     const t = this.ctx.currentTime;
-    const rpm = 45 + (speed % 12) * 9 + (throttle ? 18 : 0);
-    this.engine.frequency.setTargetAtTime(playing ? rpm : 35, t, 0.12);
-    this.sub.frequency.setTargetAtTime(playing ? rpm * 0.5 : 23, t, 0.1);
-    this.engineGain.gain.setTargetAtTime(
-      playing ? (throttle ? 0.08 : 0.035) : 0.012,
+    // A four-cylinder four-stroke engine fires twice per crank revolution.
+    const frequency = engine.rpm / 30;
+    this.engine.frequency.setTargetAtTime(frequency, t, 0.07);
+    this.sub.frequency.setTargetAtTime(frequency * 0.5, t, 0.08);
+    this.filter.frequency.setTargetAtTime(
+      350 + engine.load * 900 + engine.rpm * 0.06,
       t,
       0.1,
     );
-    this.tires.gain.setTargetAtTime(playing && drift ? 0.1 : 0, t, 0.08);
+    this.engineGain.gain.setTargetAtTime(0.025 + engine.load * 0.055, t, 0.1);
+    this.tires.gain.setTargetAtTime(drift ? 0.1 : 0, t, 0.08);
   }
 }
