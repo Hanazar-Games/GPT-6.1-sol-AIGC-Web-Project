@@ -27,6 +27,8 @@ import { InputState } from "./input.js";
 import { SessionClock } from "./clock.js";
 import { LapTracker, formatLap } from "./laps.js";
 import { DriverProfile } from "./profile.js";
+import { RenderQuality, RenderSchedule } from "./quality.js";
+import { createMinimap } from "./minimap.js";
 const $ = (id) => document.getElementById(id);
 let renderer;
 try {
@@ -40,7 +42,6 @@ try {
     "<b>当前浏览器无法启动 3D 场景<span>请开启硬件加速，或使用支持 WebGL 2 的浏览器。</span></b>";
   throw error;
 }
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.7));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = T.SRGBColorSpace;
 renderer.toneMapping = T.ACESFilmicToneMapping;
@@ -51,6 +52,16 @@ const keys = new InputState();
 const clock = new SessionClock();
 const profile = new DriverProfile();
 const preferences = profile.preferences;
+const quality = new RenderQuality(preferences.quality, {
+  width: innerWidth,
+  height: innerHeight,
+  dpr: devicePixelRatio,
+});
+const renderSchedule = new RenderSchedule();
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+renderer.setPixelRatio(quality.ratio);
+let sceneReady = false,
+  renderedFrames = 0;
 let playing = false,
   paused = false,
   mode = preferences.mode,
@@ -96,6 +107,7 @@ let previousFocus;
 let dialogKind = null;
 let onDialog = () => {};
 function dialog(kicker, title, body, action, callback) {
+  $("quality-options").classList.add("hidden");
   $("dialog-kicker").textContent = kicker;
   $("dialog-title").textContent = title;
   $("dialog-body").innerHTML = body;
@@ -162,6 +174,46 @@ function showRecords() {
   );
 }
 $("records").onclick = showRecords;
+const qualityLabels = { auto: "自动", performance: "流畅", high: "精细" };
+function updateQualityControls() {
+  for (const button of document.querySelectorAll("[data-quality]")) {
+    const selected = button.dataset.quality === quality.mode;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  }
+  $("quality").setAttribute(
+    "aria-label",
+    `画质设置：${qualityLabels[quality.mode]}`,
+  );
+  $("quality").title = `画质：${qualityLabels[quality.mode]}`;
+}
+function showQuality() {
+  const resumeAfter = playing && !paused;
+  if (resumeAfter) togglePause();
+  dialogKind = "quality";
+  dialog(
+    "FIND YOUR FLOW / 画质设置",
+    "让每个弯道更顺畅。",
+    "<p>自动适应设备表现，或选择你偏好的清晰度。切换立即生效。</p>",
+    resumeAfter ? "继续驾驶" : "完成",
+    () => {
+      if (resumeAfter) resume();
+    },
+  );
+  $("quality-options").classList.remove("hidden");
+  updateQualityControls();
+}
+$("quality").onclick = showQuality;
+for (const button of document.querySelectorAll("[data-quality]"))
+  button.onclick = () => {
+    quality.setMode(button.dataset.quality);
+    profile.setPreferences({ quality: quality.mode });
+    renderer.setPixelRatio(quality.ratio);
+    renderSchedule.invalidate();
+    updateQualityControls();
+  };
+updateQualityControls();
+reducedMotion.addEventListener("change", () => renderSchedule.invalidate());
 function clearInput() {
   keys.clear();
   document
@@ -216,6 +268,9 @@ function menu() {
   saveBest();
   playing = false;
   paused = false;
+  car.rotation.z = 0;
+  resetEffects();
+  renderSchedule.invalidate();
   audio.setActive(false);
   clearInput();
   document.body.classList.remove("playing");
@@ -280,6 +335,7 @@ for (const b of document.querySelectorAll("[data-mode]"))
 for (const b of document.querySelectorAll("[data-color]"))
   b.onclick = () => {
     paint.color.set(b.dataset.color);
+    renderSchedule.invalidate();
     profile.setPreferences({ color: b.dataset.color });
     document.querySelectorAll("[data-color]").forEach((x) => {
       x.classList.toggle("active", x === b);
@@ -306,11 +362,12 @@ addEventListener("keydown", (e) => {
       e.preventDefault();
       if (dialogKind === "help" || dialogKind === "records") closeDialog();
       else if (dialogKind === "pause") resume();
+      else if (dialogKind === "quality") $("dialog-action").click();
     }
     if (e.code === "Tab") {
       const buttons = [
         ...$("overlay").querySelectorAll("button:not(:disabled)"),
-      ];
+      ].filter((button) => button.getClientRects().length > 0);
       const first = buttons[0],
         end = buttons.at(-1);
       if (e.shiftKey && document.activeElement === first) {
@@ -364,6 +421,7 @@ addEventListener("blur", () => {
   if (playing && !paused) togglePause();
 });
 document.addEventListener("visibilitychange", () => {
+  renderSchedule.invalidate();
   if (document.hidden && playing && !paused) togglePause();
 });
 for (const b of document.querySelectorAll("[data-key]")) {
@@ -470,21 +528,26 @@ function updateCamera(dt) {
   const s = carState;
   if (!playing) {
     car.visible = true;
-    menuTime += dt;
-    const angle = s.yaw + Math.PI * 0.8 + Math.sin(menuTime * 0.12) * 0.18;
+    if (!reducedMotion.matches) menuTime += dt;
+    const angle =
+      s.yaw +
+      Math.PI * 0.8 +
+      (reducedMotion.matches ? 0 : Math.sin(menuTime * 0.12) * 0.18);
     const portrait = innerWidth < 700;
     desired.set(
       s.x + Math.sin(angle) * (portrait ? 10 : 11.6),
       portrait ? 4.4 : 4.2,
       s.z + Math.cos(angle) * (portrait ? 10 : 11.6),
     );
-    camera.position.lerp(desired, 1 - Math.exp(-dt * 2));
+    if (reducedMotion.matches) camera.position.copy(desired);
+    else camera.position.lerp(desired, 1 - Math.exp(-dt * 2));
     look.set(
       s.x - (portrait ? 0 : Math.cos(s.yaw) * 2),
       0.8,
       s.z + (portrait ? 0 : Math.sin(s.yaw) * 2),
     );
-    smoothedLook.lerp(look, 1 - Math.exp(-dt * 2));
+    if (reducedMotion.matches) smoothedLook.copy(look);
+    else smoothedLook.lerp(look, 1 - Math.exp(-dt * 2));
     camera.fov = portrait ? 57 : 48;
     camera.setViewOffset(
       innerWidth,
@@ -519,43 +582,7 @@ function updateCamera(dt) {
   camera.lookAt(smoothedLook);
   camera.updateProjectionMatrix();
 }
-const map = $("map"),
-  ctx = map.getContext("2d");
-function drawMap() {
-  ctx.clearRect(0, 0, 240, 200);
-  const mx = (x) => 120 + x * 0.65,
-    mz = (z) => 94 + z * 0.65;
-  ctx.beginPath();
-  samples.forEach((p, i) =>
-    i ? ctx.lineTo(mx(p.x), mz(p.z)) : ctx.moveTo(mx(p.x), mz(p.z)),
-  );
-  ctx.closePath();
-  ctx.strokeStyle = "#091119bb";
-  ctx.lineWidth = 12;
-  ctx.stroke();
-  ctx.strokeStyle = "#758b8477";
-  ctx.lineWidth = 5;
-  ctx.stroke();
-  ctx.strokeStyle = "#c5e3a055";
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  const start = samples[0];
-  ctx.fillStyle = "#f0f7e0";
-  ctx.fillRect(mx(start.x) - 3, mz(start.z) - 3, 6, 6);
-  ctx.save();
-  ctx.translate(mx(carState.x), mz(carState.z));
-  ctx.rotate(-carState.yaw);
-  ctx.beginPath();
-  ctx.moveTo(0, 7);
-  ctx.lineTo(-4, -4);
-  ctx.lineTo(4, -4);
-  ctx.closePath();
-  ctx.fillStyle = "#b8ed50";
-  ctx.shadowColor = "#b8ed50";
-  ctx.shadowBlur = 10;
-  ctx.fill();
-  ctx.restore();
-}
+const drawMiniMap = createMinimap($("map"), samples);
 let hudTime = 0;
 function updateHUD(dt) {
   hudTime += dt;
@@ -602,10 +629,15 @@ function updateHUD(dt) {
     ":" +
     String(sec % 60).padStart(2, "0");
   $("timer").style.color = clock.remaining < 15 ? "#ff8166" : "";
-  drawMap();
+  drawMiniMap(carState);
 }
 function frame(now) {
   requestAnimationFrame(frame);
+  if (document.hidden) {
+    last = now;
+    renderSchedule.invalidate();
+    return;
+  }
   const elapsed = Math.max(0, (now - last) / 1000);
   const dt = Math.min(elapsed, 0.08);
   last = now;
@@ -614,6 +646,10 @@ function frame(now) {
     noticeUntil = 0;
   }
   if (playing && !paused) {
+    if (quality.sample(elapsed)) {
+      renderer.setPixelRatio(quality.ratio);
+      renderSchedule.invalidate();
+    }
     const activeTime = clock.advance(elapsed);
     accumulator += Math.min(activeTime, 0.25);
     let count = 0;
@@ -633,7 +669,7 @@ function frame(now) {
   groundEffects.rotation.y = carState.yaw;
   car.rotation.z = T.MathUtils.lerp(
     car.rotation.z,
-    -carState.steer * carState.speed * 0.0009,
+    playing ? -carState.steer * carState.speed * 0.0009 : 0,
     dt * 5,
   );
   const signedSpeed =
@@ -658,9 +694,30 @@ function frame(now) {
     carState.drifting,
     playing && !paused,
   );
-  renderer.render(scene, camera);
+  if (
+    renderSchedule.shouldRender(now, {
+      active: playing && !paused,
+      hidden: document.hidden,
+      reducedMotion: !playing && reducedMotion.matches,
+    })
+  ) {
+    renderer.render(scene, camera);
+    renderedFrames++;
+    if (!sceneReady) {
+      sceneReady = true;
+      $("loading").classList.add("hidden");
+    }
+  }
 }
 addEventListener("resize", () => {
+  renderer.setPixelRatio(
+    quality.resize({
+      width: innerWidth,
+      height: innerHeight,
+      dpr: devicePixelRatio,
+    }),
+  );
+  renderSchedule.invalidate();
   renderer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
@@ -674,13 +731,13 @@ $("world").addEventListener("webglcontextlost", (event) => {
 });
 $("world").addEventListener("webglcontextrestored", () => {
   contextLost = false;
+  renderSchedule.invalidate();
   $("start").disabled = false;
   $("dialog-action").disabled = false;
   notify("3D 场景已恢复，可以继续驾驶", 4);
 });
 resetCamera();
 requestAnimationFrame(frame);
-$("loading").classList.add("hidden");
 // Small read-only diagnostics surface for repeatable browser QA.
 window.__DRIFT__ = {
   get state() {
@@ -697,6 +754,9 @@ window.__DRIFT__ = {
       stats: { ...sessionStats },
       car: { ...carState },
       drawCalls: renderer.info.render.calls,
+      renderedFrames,
+      resolution: quality.ratio,
+      quality: quality.mode,
     };
   },
 };

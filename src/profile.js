@@ -1,3 +1,4 @@
+import { QUALITY_MODES } from "./quality.js";
 export const PROFILE_KEY = "midnight-driver-v1";
 export const CAR_COLORS = ["#b8ed50", "#f66b43", "#c3c9d6", "#a78bfa"];
 const isMode = (mode) => mode === "free" || mode === "challenge";
@@ -75,6 +76,9 @@ export class DriverProfile {
         camera: [0, 1, 2].includes(saved.preferences?.camera)
           ? saved.preferences.camera
           : 0,
+        quality: QUALITY_MODES.includes(saved.preferences?.quality)
+          ? saved.preferences.quality
+          : "auto",
         mode: isMode(saved.preferences?.mode) ? saved.preferences.mode : "free",
       },
       records: {
@@ -116,6 +120,7 @@ export class DriverProfile {
     if (CAR_COLORS.includes(patch.color)) next.color = patch.color;
     if ([0, 1, 2].includes(patch.camera)) next.camera = patch.camera;
     if (isMode(patch.mode)) next.mode = patch.mode;
+    if (QUALITY_MODES.includes(patch.quality)) next.quality = patch.quality;
     if (JSON.stringify(current) === JSON.stringify(next))
       return this.persistent;
     this.data.preferences = next;

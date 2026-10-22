@@ -997,6 +997,7 @@ body {
   overflow-y: auto;
 }
 .dialog {
+  max-height: calc(100vh - 40px);
   max-height: calc(100dvh - 40px);
   overflow-y: auto;
 }
@@ -1275,4 +1276,72 @@ body {
   color: #85988e;
   font-size: 12px;
   margin: 25px 0;
+}
+
+.quality-options {
+  display: grid;
+  gap: 10px;
+}
+.quality-options button {
+  display: block;
+  text-align: left;
+  padding: 15px 17px;
+  background: #ffffff04;
+  border: 1px solid #ffffff18;
+  border-radius: 4px;
+}
+.quality-options button.selected {
+  border-color: #b8ed5080;
+  background: #b8ed500b;
+}
+.quality-options b {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+}
+.quality-options small {
+  margin-left: 10px;
+  font:
+    500 10px Barlow,
+    sans-serif;
+  letter-spacing: 2px;
+  color: #859b8d;
+}
+.quality-options .selected b {
+  color: var(--acid);
+}
+.quality-options span {
+  display: block;
+  margin-top: 6px;
+  font-size: 10px;
+  color: #8da397;
+  line-height: 1.6;
+}
+.loading.load-error > div {
+  display: none;
+}
+.loading.load-error b {
+  max-width: 310px;
+  letter-spacing: 2px;
+  line-height: 1.8;
+}
+@media (pointer: coarse) {
+  .icon-button {
+    min-width: 44px;
+    height: 44px;
+  }
+  .swatches button {
+    width: 28px;
+    height: 28px;
+  }
+  .text-button,
+  .mode-select button {
+    min-height: 44px;
+  }
+  .touch button {
+    -webkit-touch-callout: none;
+  }
+  header {
+    padding-top: max(20px, env(safe-area-inset-top));
+  }
 }

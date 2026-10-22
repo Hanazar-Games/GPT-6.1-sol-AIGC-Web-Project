@@ -33,6 +33,7 @@ test("mode scores and preferences survive reload without mixing free and timed r
     color: "#a78bfa",
     camera: 2,
     mode: "challenge",
+    quality: "auto",
   });
   reloaded.updateBest("challenge", { score: 100, bestLap: 55 });
   assert.equal(reloaded.best("challenge").score, 700);
@@ -97,6 +98,7 @@ test("corrupt stored values cannot introduce invalid dates, modes, palette or sc
     color: "#b8ed50",
     camera: 0,
     mode: "free",
+    quality: "auto",
   });
   assert.equal(profile.best("free").score, 0);
   assert.equal(profile.best("free").bestLap, null);

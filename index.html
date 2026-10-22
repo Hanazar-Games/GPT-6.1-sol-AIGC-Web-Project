@@ -12,7 +12,48 @@
       content="MIDNIGHT DRIFT — 原创 3D 山谷漂移赛车。驾驶后驱跑车，在霓虹山路挑战漂移连击。"
     />
     <title>MIDNIGHT DRIFT · 午夜漂移</title>
+    <link
+      rel="preload"
+      href="./fonts/barlow-condensed-800-italic.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <script id="boot-guard">
+      (function () {
+        var pending = false;
+        function showRetry(event) {
+          if (
+            event &&
+            event.type === "error" &&
+            event.target &&
+            event.target !== window &&
+            event.target.tagName !== "SCRIPT"
+          )
+            return;
+          var loading = document.getElementById("loading");
+          var title = document.getElementById("loading-title");
+          var retry = document.getElementById("loading-retry");
+          if (!loading || !title || !retry) {
+            pending = true;
+            return;
+          }
+          if (loading.classList.contains("hidden")) return;
+          title.textContent = "加载遇到问题，请检查网络后重试。";
+          loading.classList.add("load-error");
+          retry.classList.remove("hidden");
+          retry.onclick = function () {
+            window.location.reload();
+          };
+        }
+        window.addEventListener("DOMContentLoaded", function () {
+          if (pending) showRetry();
+        });
+        window.addEventListener("error", showRetry, true);
+        window.addEventListener("unhandledrejection", showRetry);
+      })();
+    </script>
   </head>
   <body>
     <canvas id="world" tabindex="-1" aria-label="3D 赛车游戏场景"></canvas>
@@ -34,6 +75,13 @@
           aria-label="开启声音"
         >
           ♪<span class="off-slash">／</span></button
+        ><button
+          id="quality"
+          class="icon-button"
+          title="画质设置"
+          aria-label="画质设置"
+        >
+          ⚙</button
         ><button
           id="pause"
           disabled
@@ -162,6 +210,25 @@
       >
         <span class="eyebrow" id="dialog-kicker">DRIVER'S BRIEFING</span>
         <h2 id="dialog-title">驾驶指南</h2>
+        <div
+          id="quality-options"
+          class="quality-options hidden"
+          role="group"
+          aria-label="画质档位"
+        >
+          <button data-quality="auto">
+            <b>自动 <small>AUTO</small></b
+            ><span>根据设备表现调整画面清晰度</span>
+          </button>
+          <button data-quality="performance">
+            <b>流畅 <small>SMOOTH</small></b
+            ><span>减少画面负担，适合手机和轻薄设备</span>
+          </button>
+          <button data-quality="high">
+            <b>精细 <small>DETAIL</small></b
+            ><span>更清晰的画面，适合性能充足的设备</span>
+          </button>
+        </div>
         <div id="dialog-body"></div>
         <button id="dialog-action" class="primary">
           知道了 <span>↗</span>
@@ -185,9 +252,30 @@
     </div>
     <div id="loading" class="loading">
       <span class="brand-icon">M∕</span
-      ><b>点亮山路<span>LOADING THE NIGHT</span></b>
+      ><b id="loading-title">点亮山路<span>LOADING THE NIGHT</span></b>
       <div></div>
+      <button id="loading-retry" class="primary hidden">
+        重新加载 <span>↗</span>
+      </button>
     </div>
+    <noscript
+      ><div
+        style="
+          position: fixed;
+          inset: 0;
+          z-index: 30;
+          background: #0a101a;
+          color: #b8ed50;
+          display: grid;
+          place-content: center;
+          padding: 30px;
+          font: 16px sans-serif;
+          text-align: center;
+        "
+      >
+        请开启 JavaScript 后重新加载，进入午夜山路。
+      </div></noscript
+    >
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

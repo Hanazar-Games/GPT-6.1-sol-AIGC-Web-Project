@@ -14,6 +14,7 @@ export function createEnvironment({ stored = {} } = {}) {
     buttons = [],
     windowEvents = new EventTarget();
   const context = {
+    drawImage() {},
     fillRect() {},
     fillText() {},
     clearRect() {},
@@ -38,6 +39,8 @@ export function createEnvironment({ stored = {} } = {}) {
       this.id = id;
       this.dataset = {};
       this.style = {};
+      this.width = Number(attrs.match(/\bwidth="(\d+)"/)?.[1] || 300);
+      this.height = Number(attrs.match(/\bheight="(\d+)"/)?.[1] || 150);
       this.disabled = /\sdisabled/.test(attrs);
       this.values = new Set(
         (attrs.match(/class="([^"]*)"/)?.[1] || "").split(" "),
@@ -77,9 +80,16 @@ export function createEnvironment({ stored = {} } = {}) {
       return selector.includes(this.tagName.toLowerCase()) ? this : null;
     }
     querySelectorAll() {
-      return ["return-menu", "dialog-action"]
-        .map((id) => nodes.get(id))
-        .filter(Boolean);
+      return [
+        ...buttons.filter((button) => button.dataset.quality),
+        ...["return-menu", "dialog-action"].map((id) => nodes.get(id)),
+      ].filter((button) => button && !button.disabled);
+    }
+    getClientRects() {
+      return this.dataset.quality &&
+        nodes.get("quality-options").classList.contains("hidden")
+        ? []
+        : [{}];
     }
     setPointerCapture() {}
     getContext() {
@@ -103,7 +113,9 @@ export function createEnvironment({ stored = {} } = {}) {
           ? b.dataset.mode
           : selector === "[data-color]"
             ? b.dataset.color
-            : false,
+            : selector === "[data-quality]"
+              ? b.dataset.quality
+              : false,
     );
   const html = readFileSync(
     new URL("../../index.html", import.meta.url),
@@ -113,8 +125,15 @@ export function createEnvironment({ stored = {} } = {}) {
     const id = attrs?.match(/\bid="([^"]*)"/)?.[1];
     if (id || tag === "button") new Element(tag, id, attrs || "");
   }
-  const media = new EventTarget();
-  media.matches = true;
+  const media = new Map();
+  function match(query) {
+    if (!media.has(query)) {
+      const item = new EventTarget();
+      item.matches = query.includes("coarse");
+      media.set(query, item);
+    }
+    return media.get(query);
+  }
   Object.assign(globalThis, {
     document,
     window: {},
@@ -123,7 +142,7 @@ export function createEnvironment({ stored = {} } = {}) {
     devicePixelRatio: 1,
     performance: { now: () => now },
     localStorage: storage,
-    matchMedia: () => media,
+    matchMedia: match,
     addEventListener: windowEvents.addEventListener.bind(windowEvents),
     requestAnimationFrame: (callback) => {
       frame = callback;
@@ -137,6 +156,13 @@ export function createEnvironment({ stored = {} } = {}) {
   }
   return {
     storage,
+    media,
+    resize(width, height, dpr = 1) {
+      globalThis.innerWidth = width;
+      globalThis.innerHeight = height;
+      globalThis.devicePixelRatio = dpr;
+      dispatch(windowEvents, "resize");
+    },
     nodes,
     buttons,
     document,
