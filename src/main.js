@@ -26,7 +26,7 @@ import { EngineAudio } from "./audio.js";
 import { InputState } from "./input.js";
 import { SessionClock } from "./clock.js";
 import { LapTracker, formatLap } from "./laps.js";
-import { DriverProfile } from "./profile.js";
+import { DriverProfile, PROFILE_KEY } from "./profile.js";
 import { RenderQuality, RenderSchedule } from "./quality.js";
 import { createMinimap } from "./minimap.js";
 const $ = (id) => document.getElementById(id);
@@ -49,6 +49,13 @@ renderer.toneMappingExposure = 1.25;
 const camera = new T.PerspectiveCamera(48, innerWidth / innerHeight, 0.1, 1800);
 const audio = new EngineAudio();
 const keys = new InputState();
+const inputButtons = [...document.querySelectorAll("[data-key]")];
+const arrowAliases = {
+  KeyW: "ArrowUp",
+  KeyS: "ArrowDown",
+  KeyA: "ArrowLeft",
+  KeyD: "ArrowRight",
+};
 const clock = new SessionClock();
 const profile = new DriverProfile();
 const preferences = profile.preferences;
@@ -140,6 +147,7 @@ function showHelp() {
 }
 $("help").onclick = showHelp;
 function showRecords() {
+  profile.refresh();
   dialogKind = "records";
   const labels = { free: "自由漂移", challenge: "限时挑战" };
   const summaries = ["free", "challenge"]
@@ -216,9 +224,15 @@ updateQualityControls();
 reducedMotion.addEventListener("change", () => renderSchedule.invalidate());
 function clearInput() {
   keys.clear();
-  document
-    .querySelectorAll("[data-key]")
-    .forEach((b) => b.classList.remove("pressed"));
+  syncInputButtons();
+}
+function syncInputButtons() {
+  for (const button of inputButtons)
+    button.classList.toggle(
+      "pressed",
+      keys.has(button.dataset.key) ||
+        keys.has(arrowAliases[button.dataset.key]),
+    );
 }
 function saveBest() {
   profile.updateBest(mode, {
@@ -230,6 +244,7 @@ function saveBest() {
 }
 function start() {
   if (contextLost) return;
+  profile.refresh();
   clearInput();
   sessionSaved = false;
   personalBestAtStart = profile.best(mode).score;
@@ -401,8 +416,12 @@ addEventListener("keydown", (e) => {
   if (e.code === "KeyR") reset();
   if (e.code === "KeyC") cycleCamera();
   keys.press("key:" + e.code, e.code);
+  syncInputButtons();
 });
-addEventListener("keyup", (e) => keys.release("key:" + e.code));
+addEventListener("keyup", (e) => {
+  keys.release("key:" + e.code);
+  syncInputButtons();
+});
 function cycleCamera() {
   if (!playing || paused) return;
   cameraMode = (cameraMode + 1) % 3;
@@ -413,9 +432,18 @@ $("touch-camera").onclick = cycleCamera;
 $("touch-reset").onclick = () => {
   if (playing && !paused) reset();
 };
-touchMedia.addEventListener("change", () =>
-  $("touch").classList.toggle("hidden", !touchDevice() || !playing || paused),
-);
+touchMedia.addEventListener("change", () => {
+  if (!touchDevice()) {
+    keys.releasePointers();
+    syncInputButtons();
+  }
+  $("touch").classList.toggle("hidden", !touchDevice() || !playing || paused);
+});
+addEventListener("storage", (e) => {
+  if (e.key !== PROFILE_KEY) return;
+  profile.refresh();
+  updateGarageRecord();
+});
 addEventListener("blur", () => {
   clearInput();
   if (playing && !paused) togglePause();
@@ -424,19 +452,25 @@ document.addEventListener("visibilitychange", () => {
   renderSchedule.invalidate();
   if (document.hidden && playing && !paused) togglePause();
 });
-for (const b of document.querySelectorAll("[data-key]")) {
+function releasePointer(e) {
+  keys.release("pointer:" + e.pointerId);
+  syncInputButtons();
+}
+// Window listeners also release input when pointer capture is unavailable.
+for (const type of ["pointerup", "pointercancel"])
+  addEventListener(type, releasePointer);
+for (const b of inputButtons) {
   b.addEventListener("pointerdown", (e) => {
+    if (!playing || paused || e.button > 0) return;
     e.preventDefault();
-    if (!playing || paused) return;
-    b.setPointerCapture(e.pointerId);
+    try {
+      b.setPointerCapture(e.pointerId);
+    } catch {}
     keys.press("pointer:" + e.pointerId, b.dataset.key);
-    b.classList.add("pressed");
+    syncInputButtons();
   });
   for (const ev of ["pointerup", "pointercancel", "lostpointercapture"])
-    b.addEventListener(ev, (e) => {
-      keys.release("pointer:" + e.pointerId);
-      b.classList.toggle("pressed", keys.has(b.dataset.key));
-    });
+    b.addEventListener(ev, releasePointer);
 }
 function controls() {
   return {

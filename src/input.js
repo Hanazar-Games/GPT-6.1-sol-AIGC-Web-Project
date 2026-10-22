@@ -10,7 +10,12 @@ export class InputState {
     this.sources.delete(source);
   }
   has(code) {
-    return [...this.sources.values()].includes(code);
+    for (const held of this.sources.values()) if (held === code) return true;
+    return false;
+  }
+  releasePointers() {
+    for (const source of this.sources.keys())
+      if (source.startsWith("pointer:")) this.sources.delete(source);
   }
   clear() {
     this.sources.clear();

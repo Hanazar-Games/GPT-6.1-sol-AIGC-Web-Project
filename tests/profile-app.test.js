@@ -68,6 +68,7 @@ test("garage restores preferences, separates records and saves one entry per fin
   env.click("dialog-action");
   env.buttons.find((b) => b.dataset.color === "#f66b43").click();
   assert.equal(new DriverProfile(env.storage).preferences.color, "#f66b43");
+  const write = env.storage.setItem;
   env.storage.setItem = () => {
     throw new Error("quota");
   };
@@ -79,5 +80,16 @@ test("garage restores preferences, separates records and saves one entry per fin
   env.click("return-menu");
   env.click("records");
   assert(env.nodes.get("dialog-body").innerHTML.includes("2 / 20"));
+  env.click("dialog-action");
+  env.storage.setItem = write;
+});
+test("storage notifications refresh the garage record without changing the selected mode", () => {
+  const otherTab = new DriverProfile(env.storage);
+  otherTab.recordSession({ mode: "free", score: 600, at: 1000 });
+  env.windowEvent("storage", { key: PROFILE_KEY });
+  assert.equal(env.nodes.get("menu-best").textContent, "000600");
+  assert.equal(window.__DRIFT__.state.mode, "free");
+  env.click("records");
+  assert(env.nodes.get("dialog-body").innerHTML.includes("000600"));
   env.click("dialog-action");
 });

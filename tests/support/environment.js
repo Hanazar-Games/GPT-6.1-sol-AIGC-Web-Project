@@ -174,6 +174,7 @@ export function createEnvironment({ stored = {} } = {}) {
       return e;
     },
     event: dispatch,
+    windowEvent: (type, props) => dispatch(windowEvents, type, props),
     blur: () => dispatch(windowEvents, "blur"),
     tick(seconds) {
       now += seconds * 1000;

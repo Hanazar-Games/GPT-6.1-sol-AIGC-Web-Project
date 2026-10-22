@@ -118,3 +118,88 @@ test("profile snapshots cannot mutate the underlying archive", () => {
   assert.equal(profile.best("free").score, 400);
   assert.equal(profile.preferences.color, "#b8ed50");
 });
+test("stale tabs preserve each other's records, sessions and unrelated preferences", () => {
+  const store = storage(),
+    first = new DriverProfile(store),
+    second = new DriverProfile(store);
+  first.recordSession(entry(900, "free", 1000));
+  first.setPreferences({ color: "#a78bfa" });
+  second.recordSession(entry(500, "challenge", 2000));
+  second.setPreferences({ camera: 2 });
+  first.updateBest("free", { score: 1000, bestLap: 50 });
+  const saved = new DriverProfile(store);
+  assert.equal(saved.best("free").score, 1000);
+  assert.equal(saved.best("challenge").score, 500);
+  assert.deepEqual(
+    saved.history.map((run) => run.score),
+    [500, 900],
+  );
+  assert.equal(saved.preferences.color, "#a78bfa");
+  assert.equal(saved.preferences.camera, 2);
+});
+test("session IDs retain identical drives and repeated merges do not duplicate old history", () => {
+  const original = entry(200, "free", 1000),
+    store = storage({
+      [PROFILE_KEY]: JSON.stringify({ version: 1, history: [original] }),
+    }),
+    first = new DriverProfile(store),
+    second = new DriverProfile(store);
+  first.recordSession(original);
+  second.recordSession(original);
+  first.setPreferences({ camera: 1 });
+  second.setPreferences({ quality: "performance" });
+  const saved = new DriverProfile(store);
+  assert.equal(saved.history.length, 3);
+  assert.equal(new Set(saved.history.map((run) => run.id)).size, 3);
+  assert.equal(saved.history.filter((run) => !run.id).length, 1);
+});
+test("merging two tabs keeps the latest twenty sessions and both modes' best laps", () => {
+  const store = storage(),
+    first = new DriverProfile(store),
+    second = new DriverProfile(store);
+  for (let i = 0; i < 30; i++)
+    (i % 2 ? first : second).recordSession(
+      entry(i, i % 2 ? "free" : "challenge", i),
+    );
+  first.updateBest("challenge", { bestLap: 40 });
+  second.updateBest("free", { bestLap: 45 });
+  const saved = new DriverProfile(store);
+  assert.deepEqual(
+    saved.history.map((run) => run.at),
+    Array.from({ length: 20 }, (_, i) => 29 - i),
+  );
+  assert.equal(saved.best("challenge").bestLap, 40);
+  assert.equal(saved.best("free").bestLap, 45);
+});
+test("failed preference writes survive external updates and a later successful save", () => {
+  const store = storage(),
+    first = new DriverProfile(store),
+    second = new DriverProfile(store),
+    write = store.setItem;
+  store.setItem = () => {
+    throw new Error("quota");
+  };
+  assert.equal(first.setPreferences({ color: "#f66b43" }), false);
+  store.setItem = write;
+  second.setPreferences({ camera: 2 });
+  second.recordSession(entry(300));
+  first.recordSession(entry(700, "challenge"));
+  const saved = new DriverProfile(store);
+  assert.equal(saved.preferences.color, "#f66b43");
+  assert.equal(saved.preferences.camera, 2);
+  assert.equal(saved.history.length, 2);
+});
+test("finishing a drive persists its record and history in a single write", () => {
+  const store = storage(),
+    write = store.setItem;
+  let writes = 0;
+  store.setItem = (...args) => {
+    writes++;
+    write(...args);
+  };
+  const profile = new DriverProfile(store);
+  profile.recordSession(entry(900));
+  assert.equal(writes, 1);
+  assert.equal(new DriverProfile(store).best("free").score, 900);
+  assert.equal(new DriverProfile(store).history.length, 1);
+});
