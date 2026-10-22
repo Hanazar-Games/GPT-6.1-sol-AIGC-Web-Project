@@ -58,5 +58,6 @@ test("large progress jumps invalidate rather than award shortcut lap times", () 
   assert.equal(laps.laps, 0);
   assert.equal(formatLap(125.678), "2:05.67");
   assert.equal(formatLap(null), "—:——.——");
+  assert.equal(formatLap(1e308), "—:——.——");
   assert.equal(formatLap(-5), "0:00.00");
 });

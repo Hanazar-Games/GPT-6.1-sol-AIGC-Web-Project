@@ -2,6 +2,7 @@ import { clamp } from "./physics.js";
 export function formatLap(seconds) {
   if (seconds == null || !Number.isFinite(seconds)) return "—:——.——";
   const centiseconds = Math.floor(Math.max(0, seconds) * 100);
+  if (!Number.isSafeInteger(centiseconds)) return "—:——.——";
   return `${Math.floor(centiseconds / 6000)}:${String(Math.floor(centiseconds / 100) % 60).padStart(2, "0")}.${String(centiseconds % 100).padStart(2, "0")}`;
 }
 export class LapTracker {

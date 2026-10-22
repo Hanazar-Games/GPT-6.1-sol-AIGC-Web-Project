@@ -26,6 +26,7 @@ import { EngineAudio } from "./audio.js";
 import { InputState } from "./input.js";
 import { SessionClock } from "./clock.js";
 import { LapTracker, formatLap } from "./laps.js";
+import { DriverProfile } from "./profile.js";
 const $ = (id) => document.getElementById(id);
 let renderer;
 try {
@@ -48,10 +49,14 @@ const camera = new T.PerspectiveCamera(48, innerWidth / innerHeight, 0.1, 1800);
 const audio = new EngineAudio();
 const keys = new InputState();
 const clock = new SessionClock();
+const profile = new DriverProfile();
+const preferences = profile.preferences;
 let playing = false,
   paused = false,
-  mode = "free",
-  cameraMode = 0,
+  mode = preferences.mode,
+  cameraMode = preferences.camera,
+  sessionSaved = false,
+  personalBestAtStart = 0,
   score = new DriftScore(),
   carState,
   menuTime = 0,
@@ -61,13 +66,24 @@ let playing = false,
   laps,
   sessionStats,
   contextLost = false;
-let best = 0;
-try {
-  const stored = Number(localStorage.getItem("midnight-best"));
-  best = Number.isSafeInteger(stored) && stored >= 0 ? stored : 0;
-} catch {}
 const format = (n) => Math.floor(n).toString().padStart(6, "0");
-$("menu-best").textContent = format(best);
+function updateGarageRecord() {
+  $("menu-best").textContent = format(profile.best(mode).score);
+  $("best-label").textContent =
+    mode === "free" ? "FREE RUN BEST" : "120 SEC BEST";
+}
+updateGarageRecord();
+paint.color.set(preferences.color);
+for (const button of document.querySelectorAll("[data-color]")) {
+  const selected = button.dataset.color === preferences.color;
+  button.classList.toggle("active", selected);
+  button.setAttribute("aria-pressed", String(selected));
+}
+for (const button of document.querySelectorAll("[data-mode]")) {
+  const selected = button.dataset.mode === mode;
+  button.classList.toggle("selected", selected);
+  button.setAttribute("aria-pressed", String(selected));
+}
 const p = spawn();
 carState = createCarState(p.x, p.z, p.yaw);
 laps = new LapTracker(nearestRoad(p.x, p.z).progress);
@@ -111,6 +127,41 @@ function showHelp() {
   );
 }
 $("help").onclick = showHelp;
+function showRecords() {
+  dialogKind = "records";
+  const labels = { free: "自由漂移", challenge: "限时挑战" };
+  const summaries = ["free", "challenge"]
+    .map((key) => {
+      const best = profile.best(key);
+      return `<div class="record-summary"><span>${labels[key]}</span><b>${format(best.score)}</b><small>最佳圈速 ${formatLap(best.bestLap)}</small></div>`;
+    })
+    .join("");
+  const dateFormat = new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const history = profile.history;
+  const rows = history
+    .map(
+      (entry) =>
+        `<li class="history-row"><div><b>${labels[entry.mode]}</b><small>${dateFormat.format(new Date(entry.at))} · ${entry.mode === "challenge" && !entry.completed ? "提前结束" : "已完成"}</small></div><div><strong>${format(entry.score)}</strong><small>${formatLap(entry.duration)} · ${(entry.distance / 1000).toFixed(2)} km</small></div></li>`,
+    )
+    .join("");
+  const legacy =
+    profile.legacyBest > 0
+      ? `<p class="archive-note">旧版综合纪录 ${format(profile.legacyBest)} 已保留；新纪录按模式独立记录。</p>`
+      : "";
+  dialog(
+    "DRIVER ARCHIVE / 本机档案",
+    "每次出发，都有记录。",
+    `<div class="record-summaries">${summaries}</div>${legacy}<div class="history-heading"><span>最近驾驶</span><small>${history.length} / 20</small></div>${history.length ? `<ol class="history-list">${rows}</ol>` : '<p class="empty-history">还没有驾驶记录。完成一次驾驶，留下你的第一条轨迹。</p>'}`,
+    "返回车库",
+    () => {},
+  );
+}
+$("records").onclick = showRecords;
 function clearInput() {
   keys.clear();
   document
@@ -118,17 +169,18 @@ function clearInput() {
     .forEach((b) => b.classList.remove("pressed"));
 }
 function saveBest() {
-  if (score.total > best) {
-    best = score.total;
-    try {
-      localStorage.setItem("midnight-best", String(best));
-    } catch {}
-    $("menu-best").textContent = format(best);
-  }
+  profile.updateBest(mode, {
+    score: score.total,
+    bestLap: laps.best,
+    bestChain: Math.floor(sessionStats.bestChain),
+  });
+  updateGarageRecord();
 }
 function start() {
   if (contextLost) return;
   clearInput();
+  sessionSaved = false;
+  personalBestAtStart = profile.best(mode).score;
   playing = true;
   paused = false;
   audio.setActive(true);
@@ -218,16 +270,21 @@ $("sound").onclick = async () => {
 for (const b of document.querySelectorAll("[data-mode]"))
   b.onclick = () => {
     mode = b.dataset.mode;
-    document
-      .querySelectorAll("[data-mode]")
-      .forEach((x) => x.classList.toggle("selected", x === b));
+    profile.setPreferences({ mode });
+    updateGarageRecord();
+    document.querySelectorAll("[data-mode]").forEach((x) => {
+      x.classList.toggle("selected", x === b);
+      x.setAttribute("aria-pressed", String(x === b));
+    });
   };
 for (const b of document.querySelectorAll("[data-color]"))
   b.onclick = () => {
     paint.color.set(b.dataset.color);
-    document
-      .querySelectorAll("[data-color]")
-      .forEach((x) => x.classList.toggle("active", x === b));
+    profile.setPreferences({ color: b.dataset.color });
+    document.querySelectorAll("[data-color]").forEach((x) => {
+      x.classList.toggle("active", x === b);
+      x.setAttribute("aria-pressed", String(x === b));
+    });
   };
 function notify(text, duration = 2) {
   $("notice").textContent = text;
@@ -247,7 +304,7 @@ addEventListener("keydown", (e) => {
   if (!$("overlay").classList.contains("hidden")) {
     if (e.code === "Escape" && !e.repeat) {
       e.preventDefault();
-      if (dialogKind === "help") closeDialog();
+      if (dialogKind === "help" || dialogKind === "records") closeDialog();
       else if (dialogKind === "pause") resume();
     }
     if (e.code === "Tab") {
@@ -292,6 +349,7 @@ addEventListener("keyup", (e) => keys.release("key:" + e.code));
 function cycleCamera() {
   if (!playing || paused) return;
   cameraMode = (cameraMode + 1) % 3;
+  profile.setPreferences({ camera: cameraMode });
   notify(["追尾镜头", "远景镜头", "引擎盖镜头"][cameraMode]);
 }
 $("touch-camera").onclick = cycleCamera;
@@ -333,10 +391,28 @@ function controls() {
   };
 }
 function finish() {
+  if (sessionSaved) return;
   score.bank();
+  sessionSaved = true;
   dialogKind = "result";
   $("pause").disabled = true;
   saveBest();
+  const persistent = profile.recordSession({
+    mode,
+    score: score.total,
+    at: Date.now(),
+    duration: clock.elapsed,
+    ...sessionStats,
+    bestChain: Math.floor(sessionStats.bestChain),
+    laps: laps.laps,
+    bestLap: laps.best,
+    completed: mode === "free" || clock.finished,
+  });
+  const best = profile.best(mode).score;
+  const recordBadge =
+    score.total > personalBestAtStart
+      ? '<span class="record-badge">NEW PERSONAL BEST / 本模式新纪录</span>'
+      : "";
   paused = true;
   audio.setActive(false);
   clearInput();
@@ -346,7 +422,7 @@ function finish() {
       ? "SESSION COMPLETE / 120 SEC"
       : "FREE RUN / SESSION COMPLETE",
     "山路记住了你。",
-    `<span class="eyebrow">TOTAL DRIFT POINTS</span><div class="result-score">${format(score.total)}</div><div class="result-grid"><div><span>驾驶时间</span><b>${formatLap(clock.elapsed)}</b></div><div><span>行驶距离</span><b>${(sessionStats.distance / 1000).toFixed(2)} km</b></div><div><span>最高速度</span><b>${Math.round(sessionStats.topSpeed * 3.6)} km/h</b></div><div><span>最佳连击</span><b>${Math.floor(sessionStats.bestChain).toLocaleString()}</b></div><div><span>完成圈数</span><b>${laps.laps}</b></div><div><span>最佳圈速</span><b>${formatLap(laps.best)}</b></div></div><p>个人最佳 ${format(best)}</p><button class="secondary" id="return-menu">返回车库</button>`,
+    `${recordBadge}<span class="eyebrow">TOTAL DRIFT POINTS</span><div class="result-score">${format(score.total)}</div><div class="result-grid"><div><span>驾驶时间</span><b>${formatLap(clock.elapsed)}</b></div><div><span>行驶距离</span><b>${(sessionStats.distance / 1000).toFixed(2)} km</b></div><div><span>最高速度</span><b>${Math.round(sessionStats.topSpeed * 3.6)} km/h</b></div><div><span>最佳连击</span><b>${Math.floor(sessionStats.bestChain).toLocaleString()}</b></div><div><span>完成圈数</span><b>${laps.laps}</b></div><div><span>最佳圈速</span><b>${formatLap(laps.best)}</b></div></div><p>本模式最高分 ${format(best)}<br><span class="save-status">${persistent ? "驾驶档案已保存到此浏览器" : "浏览器存储不可用，档案仅在本次打开时保留"}</span></p><button class="secondary" id="return-menu">返回车库</button>`,
     "再跑一次",
     start,
   );
@@ -373,6 +449,7 @@ function step(dt) {
     notify(`+${score.lastBank.toLocaleString()} 漂移分数已入账`);
   }
   if (laps.observe(after.progress, clock.elapsed)) {
+    saveBest();
     notify(`LAP ${laps.laps} · ${formatLap(laps.last)}`, 3);
   }
 }
@@ -515,7 +592,7 @@ function updateHUD(dt) {
       : "GRIP";
   $("lap-number").textContent = String(laps.laps + 1).padStart(2, "0");
   $("lap-time").textContent = formatLap(laps.current(clock.elapsed));
-  $("lap-best").textContent = formatLap(laps.best);
+  $("lap-best").textContent = formatLap(profile.best(mode).bestLap);
   $("lap-status").textContent = laps.valid
     ? "CURRENT LAP"
     : "OUT LAP / 过线计时";

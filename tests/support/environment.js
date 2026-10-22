@@ -1,5 +1,13 @@
 import { readFileSync } from "node:fs";
-export function createEnvironment() {
+export function createEnvironment({ stored = {} } = {}) {
+  const values = new Map([
+    ["midnight-best", "Infinity"],
+    ...Object.entries(stored),
+  ]);
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)),
+  };
   let now = 1000,
     frame;
   const nodes = new Map(),
@@ -114,7 +122,7 @@ export function createEnvironment() {
     innerHeight: 800,
     devicePixelRatio: 1,
     performance: { now: () => now },
-    localStorage: { getItem: () => "Infinity", setItem() {} },
+    localStorage: storage,
     matchMedia: () => media,
     addEventListener: windowEvents.addEventListener.bind(windowEvents),
     requestAnimationFrame: (callback) => {
@@ -128,6 +136,7 @@ export function createEnvironment() {
     return e;
   }
   return {
+    storage,
     nodes,
     buttons,
     document,

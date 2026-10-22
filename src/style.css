@@ -1172,3 +1172,107 @@ body {
     font-size: 25px;
   }
 }
+
+.garage-tools {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-top: 2px;
+}
+.garage-tools .text-button {
+  color: #c5d1c9;
+  padding: 10px 0;
+}
+.garage-tools > small {
+  color: #74867f;
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+.record-badge {
+  display: block;
+  padding: 8px 0 14px;
+  color: var(--acid);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+}
+.save-status {
+  color: #83988c;
+  font-size: 10px;
+}
+.record-summaries {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.record-summary {
+  border-top: 1px solid #b8ed5040;
+  padding-top: 12px;
+}
+.record-summary > span {
+  font-size: 11px;
+  color: #adbcb2;
+}
+.record-summary > b {
+  display: block;
+  font:
+    600 36px "Barlow Condensed",
+    sans-serif;
+  color: var(--acid);
+  letter-spacing: 2px;
+  margin: 5px 0;
+}
+.record-summary > small {
+  font-size: 9px;
+  color: #90a299;
+}
+.dialog .archive-note {
+  font-size: 10px;
+  line-height: 1.7;
+  color: #879c90;
+}
+.history-heading {
+  display: flex;
+  justify-content: space-between;
+  margin: 28px 0 10px;
+  font-size: 11px;
+  color: #c8d4cb;
+}
+.history-heading small {
+  color: #7f978b;
+}
+.history-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.history-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid #ffffff12;
+  padding: 13px 0;
+}
+.history-row b {
+  font-size: 11px;
+  font-weight: 500;
+}
+.history-row small {
+  display: block;
+  color: #85988e;
+  font-size: 9px;
+  margin-top: 5px;
+}
+.history-row > div:last-child {
+  text-align: right;
+}
+.history-row strong {
+  font:
+    600 23px "Barlow Condensed",
+    sans-serif;
+  letter-spacing: 1px;
+}
+.dialog .empty-history {
+  color: #85988e;
+  font-size: 12px;
+  margin: 25px 0;
+}
