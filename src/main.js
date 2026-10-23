@@ -142,7 +142,7 @@ function showHelp() {
   dialog(
     "DRIVER’S BRIEFING",
     "山路，交给你了。",
-    '<div class="control-row"><span>油门 / 刹车与倒车</span><span><kbd>W / ↑</kbd><kbd>S / ↓</kbd></span></div><div class="control-row"><span>转向</span><span><kbd>A / ←</kbd><kbd>D / →</kbd></span></div><div class="control-row"><span>手刹 / 甩尾</span><kbd>SPACE</kbd></div><div class="control-row"><span>切换镜头 / 重置车辆</span><span><kbd>C</kbd><kbd>R</kbd></span></div><p>先加速到 50 km/h 以上，入弯时转向并轻点手刹。松开手刹，用反打修正车头。连续漂移提高倍率，回正 1.6 秒后结算。撞护栏会失去当前连击。</p><p>触屏设备使用屏幕底部的驾驶按钮。</p>',
+    '<div class="control-row"><span>油门 / 刹车与倒车</span><span><kbd>W / ↑</kbd><kbd>S / ↓</kbd></span></div><div class="control-row"><span>转向</span><span><kbd>A / ←</kbd><kbd>D / →</kbd></span></div><div class="control-row"><span>手刹 / 甩尾</span><kbd>SPACE</kbd></div><div class="control-row"><span>切换镜头 / 重置车辆</span><span><kbd>C</kbd><kbd>R</kbd></span></div><p>入弯前减速，转向后短按手刹。松开手刹，及时向车尾滑出的方向反打。轻点油门保持滑动，松油帮助后轮恢复抓地；长按手刹或持续打满方向容易甩过头。连续漂移提高倍率，回正 1.6 秒后结算。撞护栏会失去当前连击。</p><p>触屏设备使用屏幕底部的驾驶按钮。</p>',
     "准备好了",
     () => {},
   );
@@ -259,6 +259,7 @@ function start() {
   resetEffects();
   wheels.forEach((wheel) => wheel.rotation.set(0, 0, 0));
   car.rotation.z = 0;
+  car.rotation.x = 0;
   score = new DriftScore();
   const s = spawn();
   carState = createCarState(s.x, s.z, s.yaw);
@@ -287,6 +288,7 @@ function menu() {
   playing = false;
   paused = false;
   car.rotation.z = 0;
+  car.rotation.x = 0;
   resetEffects();
   renderSchedule.invalidate();
   audio.setActive(false);
@@ -368,6 +370,8 @@ function reset() {
   const near = nearestRoad(carState.x, carState.z),
     t = tangents[near.index];
   carState = createCarState(near.x, near.z, Math.atan2(t.x, t.z));
+  car.rotation.x = 0;
+  car.rotation.z = 0;
   drivetrain.reset();
   score.reset();
   laps.reanchor(near.progress, clock.elapsed);
@@ -705,14 +709,19 @@ function frame(now) {
   groundEffects.rotation.y = carState.yaw;
   car.rotation.z = T.MathUtils.lerp(
     car.rotation.z,
-    playing ? -carState.steer * carState.speed * 0.0009 : 0,
+    playing ? carState.roll : 0,
+    dt * 5,
+  );
+  car.rotation.x = T.MathUtils.lerp(
+    car.rotation.x,
+    playing ? carState.pitch : 0,
     dt * 5,
   );
   const signedSpeed =
     carState.vx * Math.sin(carState.yaw) + carState.vz * Math.cos(carState.yaw);
   for (const wheel of wheels) {
     wheel.rotation.x += playing && !paused ? (signedSpeed * dt) / 0.37 : 0;
-    if (wheel.position.z > 0) wheel.rotation.y = carState.steer * 0.35;
+    if (wheel.position.z > 0) wheel.rotation.y = carState.steerAngle;
   }
   setBrake(
     playing && (keys.has("Space") || keys.has("KeyS") || keys.has("ArrowDown")),

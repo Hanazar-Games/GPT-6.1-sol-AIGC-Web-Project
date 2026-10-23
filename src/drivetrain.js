@@ -19,6 +19,7 @@ export class Drivetrain {
     if (dt <= 0) return;
     this.shiftRemaining = Math.max(0, this.shiftRemaining - dt);
     const forward = car.vx * Math.sin(car.yaw) + car.vz * Math.cos(car.yaw);
+    const throttle = clamp(car.throttle ?? (Number(input.throttle) || 0), 0, 1);
     const reversing =
       (input.reverse && forward < 0.5) ||
       (this.gear === -1 && forward < -0.5 && !input.throttle);
@@ -43,16 +44,14 @@ export class Drivetrain {
         (this.gear < 0 ? Math.max(0, -forward) : Math.max(0, forward)) *
         wheelFactor *
         ratio,
-      launching = input.throttle && car.speed < 4 ? 2100 : IDLE_RPM,
+      launching = car.speed < 4 ? IDLE_RPM + 1200 * throttle : IDLE_RPM,
       target = clamp(Math.max(rolling, launching), IDLE_RPM, REDLINE_RPM),
       load =
         (input.reverse
           ? this.gear < 0
             ? 0.7
             : 0.05
-          : input.throttle
-            ? 1
-            : 0.08) * (this.shiftRemaining > 0 ? 0.45 : 1);
+          : 0.08 + throttle * 0.92) * (this.shiftRemaining > 0 ? 0.45 : 1);
     this.rpm += (target - this.rpm) * (1 - Math.exp(-12 * dt));
     this.load += (load - this.load) * (1 - Math.exp(-12 * dt));
   }
