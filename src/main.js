@@ -30,6 +30,7 @@ import { DriverProfile, PROFILE_KEY } from "./profile.js";
 import { RenderQuality, RenderSchedule } from "./quality.js";
 import { createMinimap } from "./minimap.js";
 import { Drivetrain, REDLINE_RPM } from "./drivetrain.js";
+import { drivingCameraHeading } from "./camera.js";
 const $ = (id) => document.getElementById(id);
 let renderer;
 try {
@@ -142,7 +143,7 @@ function showHelp() {
   dialog(
     "DRIVER’S BRIEFING",
     "山路，交给你了。",
-    '<div class="control-row"><span>油门 / 刹车与倒车</span><span><kbd>W / ↑</kbd><kbd>S / ↓</kbd></span></div><div class="control-row"><span>转向</span><span><kbd>A / ←</kbd><kbd>D / →</kbd></span></div><div class="control-row"><span>手刹 / 甩尾</span><kbd>SPACE</kbd></div><div class="control-row"><span>切换镜头 / 重置车辆</span><span><kbd>C</kbd><kbd>R</kbd></span></div><p>入弯前减速，转向后短按手刹。松开手刹，及时向车尾滑出的方向反打。轻点油门保持滑动，松油帮助后轮恢复抓地；长按手刹或持续打满方向容易甩过头。连续漂移提高倍率，回正 1.6 秒后结算。撞护栏会失去当前连击。</p><p>触屏设备使用屏幕底部的驾驶按钮。</p>',
+    '<div class="control-row"><span>油门 / 刹车与倒车</span><span><kbd>W / ↑</kbd><kbd>S / ↓</kbd></span></div><div class="control-row"><span>转向</span><span><kbd>A / ←</kbd><kbd>D / →</kbd></span></div><div class="control-row"><span>手刹 / 甩尾</span><kbd>SPACE</kbd></div><div class="control-row"><span>切换镜头 / 重置车辆</span><span><kbd>C</kbd><kbd>R</kbd></span></div><p>入弯前减速，转向后短按手刹。松开手刹，及时向车尾滑出的方向反打。轻点油门保持滑动，松油帮助后轮恢复抓地；方向带有限回正辅助；松开方向并松油可以收车，长按手刹会损失速度。连续漂移提高倍率，回正 1.6 秒后结算。撞护栏会失去当前连击。</p><p>触屏设备使用屏幕底部的驾驶按钮。</p>',
     "准备好了",
     () => {},
   );
@@ -461,7 +462,7 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden && playing && !paused) togglePause();
 });
 function releasePointer(e) {
-  keys.release("pointer:" + e.pointerId);
+  keys.release("pointer:" + e.pointerId, e.type === "pointercancel");
   syncInputButtons();
 }
 // Window listeners also release input when pointer capture is unavailable.
@@ -532,6 +533,7 @@ function step(dt) {
   sessionStats.bestChain = Math.max(sessionStats.bestChain, score.chain);
   const input = controls(),
     road = nearestRoad(carState.x, carState.z);
+  if (keys.advance(dt)) syncInputButtons();
   stepCar(carState, input, dt, road);
   const after = nearestRoad(carState.x, carState.z);
   const announceImpact = carState.collisionCooldown === 0;
@@ -604,17 +606,18 @@ function updateCamera(dt) {
     camera.clearViewOffset();
     const distance = cameraMode === 1 ? 15 : cameraMode === 2 ? -0.9 : 9;
     const height = cameraMode === 1 ? 8 : cameraMode === 2 ? 1.18 : 4.4;
+    const heading = drivingCameraHeading(s, cameraMode);
     car.visible = cameraMode !== 2;
     desired.set(
-      s.x - Math.sin(s.yaw) * distance,
+      s.x - Math.sin(heading) * distance,
       height,
-      s.z - Math.cos(s.yaw) * distance,
+      s.z - Math.cos(heading) * distance,
     );
     camera.position.lerp(
       desired,
       1 - Math.exp(-dt * (cameraMode === 2 ? 24 : 5)),
     );
-    look.set(s.x + Math.sin(s.yaw) * 7, 1, s.z + Math.cos(s.yaw) * 7);
+    look.set(s.x + Math.sin(heading) * 7, 1, s.z + Math.cos(heading) * 7);
     smoothedLook.lerp(look, 1 - Math.exp(-dt * 9));
     camera.fov = T.MathUtils.lerp(
       camera.fov,

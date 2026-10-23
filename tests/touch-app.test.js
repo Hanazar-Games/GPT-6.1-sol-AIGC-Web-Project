@@ -83,3 +83,27 @@ test("failed capture still releases outside the button and secondary clicks cann
   assert.equal(attempts, 1, "right click must not capture a driving control");
   gas.setPointerCapture = capture;
 });
+test("a handbrake tap between frames reaches physics, then releases without sticking", () => {
+  env.click("start");
+  env.key("KeyW");
+  for (let i = 0; i < 30; i++) env.tick(0.1);
+  env.key("KeyA");
+  env.key("Space");
+  env.key("Space", "keyup");
+  env.tick(0.05);
+  assert(state().car.handbrake > 0.2);
+  for (let i = 0; i < 6; i++) env.tick(0.1);
+  assert(state().car.handbrake < 0.05);
+  const brake = env.buttons.find((button) => button.dataset.key === "Space");
+  assert(!brake.classList.contains("pressed"));
+  env.event(brake, "pointerdown", { pointerId: 10, button: 0 });
+  env.event(brake, "pointercancel", { pointerId: 10 });
+  env.tick(0.1);
+  assert(
+    state().car.handbrake < 0.05,
+    "cancelled touches must not apply buffered braking",
+  );
+  env.key("Escape");
+  env.click("return-menu");
+  env.click("return-menu");
+});

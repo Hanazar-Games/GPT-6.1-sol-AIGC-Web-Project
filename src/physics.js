@@ -17,6 +17,10 @@ const weight = CAR_SPEC.mass * CAR_SPEC.gravity;
 const frontStaticLoad = (weight * CAR_SPEC.rearAxle) / wheelbase;
 const pedal = (value) =>
   value === true ? 1 : Number.isFinite(value) ? clamp(value, 0, 1) : 0;
+const smooth = (value) => {
+  const t = clamp(value, 0, 1);
+  return t * t * (3 - 2 * t);
+};
 export function createCarState(x = 0, z = 0, yaw = 0) {
   return {
     x,
@@ -31,6 +35,7 @@ export function createCarState(x = 0, z = 0, yaw = 0) {
     collisionCooldown: 0,
     yawRate: 0,
     steerAngle: 0,
+    steerAssist: 0,
     handbrake: 0,
     throttle: 0,
     serviceBrake: 0,
@@ -61,9 +66,35 @@ function integrateCar(s, input, dt, road) {
     forwardZ = Math.cos(s.yaw);
   const longitudinal = s.vx * forwardX + s.vz * forwardZ;
   const lateral = s.vx * forwardZ - s.vz * forwardX;
+  const requestedSteer = clamp(input.steer || 0, -1, 1),
+    countersteering = requestedSteer * s.steer < 0;
   s.steer +=
-    (clamp(input.steer || 0, -1, 1) - s.steer) * (1 - Math.exp(-9 * dt));
-  s.steerAngle = s.steer * (0.5 / (1 + Math.abs(longitudinal) / 30));
+    (requestedSteer - s.steer) *
+    (1 - Math.exp(-(countersteering ? 18 : 11) * dt));
+  const sideslip = Math.atan2(-lateral, Math.max(0.1, longitudinal)),
+    sliding =
+      smooth((Math.abs(sideslip) - 0.04) / 0.24) *
+      smooth((longitudinal - 4) / 6),
+    intoSlide = s.steer * sideslip > 0,
+    authority = intoSlide ? 1 - sliding * 0.4 : 1,
+    steeringRange =
+      (0.5 / (1 + Math.abs(longitudinal) / 30)) * (1 - sliding) +
+      0.42 * sliding,
+    slipRate =
+      s.yawRate -
+      (longitudinal * s.lateralAccel - lateral * s.longitudinalAccel) /
+        Math.max(16, s.speed * s.speed);
+  // A keyboard supplies direction, rather than steering-wheel torque. Model a
+  // bounded self-aligning rack and quicker deliberate countersteer; all chassis
+  // motion still comes from contact-patch forces, never a direct yaw correction.
+  s.steerAssist =
+    clamp(-sideslip * 1.25 - clamp(slipRate * 0.25, -0.18, 0.18), -0.95, 0.95) *
+    sliding;
+  s.steerAngle = clamp(
+    s.steer * steeringRange * authority + s.steerAssist,
+    -0.62,
+    0.62,
+  );
   const offroad = road.distance > road.halfWidth;
   const throttle = pedal(input.throttle),
     reverse = pedal(input.reverse);

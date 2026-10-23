@@ -135,8 +135,8 @@ test("a short handbrake initiation can be caught with countersteer and throttle 
   assert(car.slip < 0.06 && Math.abs(car.yawRate) < 0.1);
   assert(car.speed > 12, "recovery must preserve useful forward momentum");
   assert(
-    holding.slip > 1,
-    "holding throttle and steering is allowed to spin out",
+    holding.slip > car.slip + 0.1 && holding.speed > 12,
+    "holding the turn maintains a slide while deliberate recovery straightens it",
   );
 });
 test("left and right handling mirror each other, including reverse steering", () => {
