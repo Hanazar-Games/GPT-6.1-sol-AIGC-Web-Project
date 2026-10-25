@@ -117,3 +117,34 @@ test("another guardrail contact during cooldown still cancels a drift chain", ()
     "physical contacts must not be suppressed by notification cooldown",
   );
 });
+test("guardrail contact clears the captured drift target and allows deliberate escape", () => {
+  const car = createCarState(14, 0);
+  car.vx = 4;
+  car.vz = 16;
+  car.speed = Math.hypot(car.vx, car.vz);
+  car.driftControl = 1;
+  car.driftTarget = 0.46;
+  car.drifting = true;
+  assert(resolveBarrier(car, { x: 0, z: 0 }, 10));
+  assert.equal(car.driftControl, 0);
+  assert.equal(car.driftTarget, 0);
+  for (let i = 0; i < 120; i++) {
+    stepCar(car, { throttle: true, steer: -0.5 }, 1 / 120, road);
+    if (i < 30)
+      assert.equal(
+        car.driftControl,
+        0,
+        "cooldown must leave recovery steering to the driver",
+      );
+    resolveBarrier(car, { x: 0, z: car.z }, 10);
+  }
+  assert(
+    car.x < 10 && car.speed > 8,
+    "steering into the road must escape the rail with momentum",
+  );
+  assert(
+    Object.values(car).every(
+      (v) => typeof v !== "number" || Number.isFinite(v),
+    ),
+  );
+});

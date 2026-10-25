@@ -97,14 +97,14 @@ function integrateCar(s, input, dt, road) {
     burnoutRequested = !!input.burnout || (rawThrottle > 0 && rawReverse > 0);
   s.burnoutActive =
     burnoutRequested && s.speed < 3.5 && longitudinal > -1 && !input.brake;
-  const throttle = s.burnoutActive ? 1 : input.burnout ? 0 : rawThrottle,
-    reverse = s.burnoutActive ? 0 : input.burnout ? 1 : rawReverse;
+  const throttle = s.burnoutActive ? 1 : burnoutRequested ? 0 : rawThrottle,
+    reverse = burnoutRequested ? 0 : rawReverse,
+    brakeRequest =
+      burnoutRequested && !s.burnoutActive ? 1 : longitudinal > 1 ? reverse : 0;
   s.throttle +=
     (throttle - s.throttle) *
     (1 - Math.exp(-(throttle > s.throttle ? 7 : 14) * dt));
-  s.serviceBrake +=
-    ((longitudinal > 1 ? reverse : 0) - s.serviceBrake) *
-    (1 - Math.exp(-16 * dt));
+  s.serviceBrake += (brakeRequest - s.serviceBrake) * (1 - Math.exp(-16 * dt));
   s.handbrake +=
     (pedal(input.brake) - s.handbrake) *
     (1 - Math.exp(-(input.brake ? 18 : 9) * dt));
@@ -117,7 +117,7 @@ function integrateCar(s, input, dt, road) {
   const sideslip = Math.atan2(-lateral, Math.max(0.1, longitudinal)),
     sliding =
       smooth((Math.abs(sideslip) - 0.04) / 0.24) *
-      smooth((longitudinal - 4) / 6),
+      smooth((longitudinal - 2) / 5),
     intoSlide = s.steer * sideslip > 0,
     authority = intoSlide ? 1 - sliding * 0.4 : 1,
     steeringRange =
@@ -153,9 +153,16 @@ function integrateCar(s, input, dt, road) {
     rawReverse === 0 &&
     !input.brake &&
     !burnoutRequested &&
-    longitudinal > 6;
+    longitudinal > 3 &&
+    s.collisionCooldown === 0;
+  // Catch growing yaw before a low-speed slide exceeds the available steering
+  // lock. Prediction only arms when the driven tires are actually slipping.
+  const impendingSlide =
+    s.rearSlipRatio > 0.06 &&
+    Math.abs(sideslip + clamp(slipRate, -2, 2) * 0.2) > 0.12;
   const driftEngaged =
-    powerSlide && (Math.abs(sideslip) > 0.12 || s.driftControl > 0.4);
+    powerSlide &&
+    (Math.abs(sideslip) > 0.12 || impendingSlide || s.driftControl > 0.4);
   if (driftEngaged) {
     if (Math.abs(requestedSteer) > 0.05)
       s.driftTarget += clamp(
@@ -253,11 +260,9 @@ function integrateCar(s, input, dt, road) {
     rearX = CAR_SPEC.longitudinalStiffness * s.rearSlipRatio,
     rearY =
       rearPeak * Math.tanh((CAR_SPEC.rearStiffness * s.rearSlip) / rearPeak);
-  if (reverse > 0) {
-    if (longitudinal > 1) {
-      frontX = -15500 * 0.65 * s.serviceBrake;
-    }
-  }
+  // A service brake opposes tire travel in either direction. Burnout commands
+  // must brake a reversing chassis, rather than accidentally request reverse torque.
+  frontX = -15500 * 0.65 * s.serviceBrake * Math.tanh(frontLong / 0.4);
   if (s.burnoutActive) frontX = -frontLimit * Math.tanh(longitudinal / 0.08);
   // Longitudinal and lateral demands share the same contact-patch budget.
   // Throttle can therefore break rear grip while the front axle keeps steering.
@@ -397,8 +402,11 @@ export function resolveBarrier(s, nearest, halfWidth) {
   s.speed = Math.hypot(s.vx, s.vz);
   s.slip = Math.abs(wrapAngle(Math.atan2(s.vx, s.vz) - s.yaw));
   s.drifting = false;
+  s.driftControl = 0;
+  s.driftTarget = 0;
   s.collisionCooldown = 0.65;
-  // Always report physical contact; cooldown only limits impact feedback/friction.
+  // Always report physical contact; cooldown limits impact feedback/friction
+  // and leaves the recovery interval under manual steering with self-alignment.
   return true;
 }
 export class DriftScore {

@@ -246,3 +246,35 @@ test("reducing throttle narrows the slide while holding power preserves angle", 
   );
   assert(lifted.slip < 0.04 && lifted.speed > car.speed * 0.8);
 });
+test("low-speed handbrake entries stay catchable and build into a powered slide", () => {
+  for (const speed of [4, 6, 8, 10])
+    for (const direction of [-1, 1])
+      for (const step of [1 / 60, 1 / 120, 1 / 240]) {
+        const car = moving(speed);
+        let peak = 0;
+        for (let i = 0; i < Math.round(8 / step); i++) {
+          stepCar(
+            car,
+            {
+              throttle: true,
+              steer: i * step < 1 ? direction : 0,
+              brake: i * step < 0.2,
+            },
+            step,
+            road,
+          );
+          peak = Math.max(peak, car.slip);
+        }
+        assert(
+          peak < 0.8,
+          `entry ${speed}: assist must catch yaw buildup before the chassis spins`,
+        );
+        assert(
+          car.speed > 15 && car.drifting,
+          "low entry speed must not trap the car in repeated spins",
+        );
+        for (let i = 0; i < Math.round(2 / step); i++)
+          stepCar(car, {}, step, road);
+        assert(car.slip < 0.04 && Math.abs(car.yawRate) < 0.1);
+      }
+});

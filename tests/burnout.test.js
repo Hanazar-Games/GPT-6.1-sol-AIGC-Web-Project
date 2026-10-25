@@ -62,3 +62,27 @@ test("releasing the front brake with throttle converts wheelspin into forward ac
   assert(!car.burnoutActive && car.speed > 10);
   assert(Number.isFinite(car.rearSlipRatio));
 });
+test("burnout from reverse brakes before spinning the rear wheels instead of accelerating backwards", () => {
+  for (const input of [{ burnout: true }, { throttle: true, reverse: true }]) {
+    const car = createCarState();
+    car.vz = -8;
+    car.speed = 8;
+    car.gear = -1;
+    run(car, input, 0.1);
+    assert(
+      car.vz < 0 && car.speed > 5,
+      "the moving car must decelerate without teleporting to rest",
+    );
+    assert(
+      car.speed < 8 && car.frontForceX > 0,
+      "brakes must oppose reverse travel",
+    );
+    run(car, input, 5);
+    assert(car.burningOut && car.speed < 0.25);
+    assert(
+      Math.abs(car.z) < 12,
+      "a burnout request must not keep driving backwards",
+    );
+    assert(car.rearWheelSpeed > 30 && car.gear === 1);
+  }
+});
