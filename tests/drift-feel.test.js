@@ -146,3 +146,103 @@ test("power retains a slide with neutral steering; lifting restores grip without
       assert(car.rearGrip > 0.95 && car.driftTarget === 0);
     }
 });
+test("actual tire steering stays continuous through initiation, transitions, lift-off and handbrake reapplication", () => {
+  for (const step of [1 / 60, 1 / 120, 1 / 240]) {
+    const car = moving(20);
+    let previous = car.steerAngle,
+      peakRate = 0,
+      peakYawRate = 0;
+    for (let i = 0; i < Math.round(10 / step); i++) {
+      const t = i * step;
+      stepCar(
+        car,
+        {
+          throttle: t < 6 || t > 7,
+          steer: t < 2 ? 1 : t < 4 ? -1 : t < 6 ? 1 : 0,
+          brake: t < 0.2 || (t > 4.4 && t < 4.55),
+        },
+        step,
+        road,
+      );
+      peakRate = Math.max(peakRate, Math.abs(car.steerAngle - previous) / step);
+      peakYawRate = Math.max(peakYawRate, Math.abs(car.yawRate));
+      assert(car.slip < 0.8, "smoothing must still leave the drift catchable");
+      previous = car.steerAngle;
+    }
+    assert(
+      peakRate < 4,
+      "assist switching must not snap the actual steering rack",
+    );
+    assert(
+      peakRate > 1 && peakYawRate > 0.2,
+      "rate limits must retain responsive steering",
+    );
+  }
+});
+test("brief throttle modulation and handbrake corrections retain a drift chain across entry speeds", () => {
+  for (const speed of [12, 16, 20, 24])
+    for (const correction of ["lift", "handbrake"]) {
+      const car = moving(speed),
+        score = new DriftScore();
+      let peak = 0;
+      for (let i = 0; i < 1800; i++) {
+        const t = i * dt,
+          correcting = t >= 3 && t < 3.1;
+        stepCar(
+          car,
+          {
+            throttle: !(correction === "lift" && correcting),
+            steer: t < 1 ? 1 : 0,
+            brake: t < 0.2 || (correction === "handbrake" && correcting),
+          },
+          dt,
+          road,
+        );
+        score.update(car, dt);
+        peak = Math.max(peak, car.slip);
+        assert.equal(
+          score.lastBank,
+          0,
+          "a brief correction must not drop the chain at redline",
+        );
+      }
+      assert(score.driftTime > 12.5 && score.multiplier > 1);
+      assert(car.slip > 0.25 && peak < 0.8);
+      assert(
+        car.speed > speed,
+        "a torque-recovery shift must preserve useful drive",
+      );
+    }
+});
+test("reducing throttle narrows the slide while holding power preserves angle", () => {
+  const car = moving(18);
+  for (let i = 0; i < 360; i++)
+    stepCar(
+      car,
+      { throttle: true, steer: i < 120 ? 1 : 0, brake: i < 24 },
+      dt,
+      road,
+    );
+  const full = { ...car },
+    partial = { ...car },
+    lifted = { ...car };
+  let fullSlip = 0,
+    partialSlip = 0,
+    liftedSlip = 0;
+  for (let i = 0; i < 240; i++) {
+    stepCar(full, { throttle: 1 }, dt, road);
+    stepCar(partial, { throttle: 0.5 }, dt, road);
+    stepCar(lifted, {}, dt, road);
+    if (i >= 120) {
+      fullSlip += full.slip;
+      partialSlip += partial.slip;
+      liftedSlip += lifted.slip;
+    }
+  }
+  assert(fullSlip > partialSlip * 2);
+  assert(
+    partialSlip > liftedSlip * 2,
+    "partial throttle must remain distinct from complete lift-off",
+  );
+  assert(lifted.slip < 0.04 && lifted.speed > car.speed * 0.8);
+});

@@ -73,3 +73,49 @@ test("sideways motion does not inflate RPM and reset clears shift state", () => 
   assert.equal(sliding.rpm, IDLE_RPM);
   assert.equal(sliding.shiftRemaining, 0);
 });
+test("linked drift does not upshift on a brief straightening until wheel torque benefits", async () => {
+  const { initialEngineState, updateEngine } = await import(
+    "../src/powertrain.js"
+  );
+  const state = { ...initialEngineState(), gear: 2, rpm: 6900 };
+  const vehicle = {
+    ...car(23.5),
+    throttle: 1,
+    slip: 0.05,
+    driftControl: 1,
+    rearWheelSpeed: 24 / 0.37,
+  };
+  updateEngine(state, vehicle, { throttle: true }, 1 / 120);
+  assert.equal(
+    state.gear,
+    2,
+    "a low sideslip crossing must not cut torque mid-transition",
+  );
+});
+test("redline wheelspin permits a drift upshift when it restores wheel force, with shift torque included", async () => {
+  const { initialEngineState, updateEngine, engineDriveForce } = await import(
+    "../src/powertrain.js"
+  );
+  const state = { ...initialEngineState(), gear: 2, rpm: 7200 };
+  const vehicle = {
+    ...car(22),
+    throttle: 1,
+    slip: 0.4,
+    driftControl: 1,
+    rearWheelSpeed: 25.5 / 0.37,
+  };
+  const before = engineDriveForce(state, vehicle.rearWheelSpeed, 1, 0);
+  updateEngine(state, vehicle, { throttle: true }, 1 / 120);
+  assert.equal(
+    state.gear,
+    3,
+    "wheel redline must not leave the car trapped in a weak low gear",
+  );
+  assert(engineDriveForce(state, vehicle.rearWheelSpeed, 1, 0) > before);
+  updateEngine(state, vehicle, { throttle: true }, 1 / 120);
+  assert.equal(
+    state.gear,
+    3,
+    "shift cooldown must block another immediate gear change",
+  );
+});

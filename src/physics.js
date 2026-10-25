@@ -20,6 +20,8 @@ export const CAR_SPEC = Object.freeze({
   wheelRadius: WHEEL_RADIUS,
   rearWheelInertia: 18,
   longitudinalStiffness: 48000,
+  steeringRate: 3.8,
+  driftTargetRate: 1.8,
 });
 const wheelbase = CAR_SPEC.frontAxle + CAR_SPEC.rearAxle;
 const weight = CAR_SPEC.mass * CAR_SPEC.gravity;
@@ -95,6 +97,18 @@ function integrateCar(s, input, dt, road) {
     burnoutRequested = !!input.burnout || (rawThrottle > 0 && rawReverse > 0);
   s.burnoutActive =
     burnoutRequested && s.speed < 3.5 && longitudinal > -1 && !input.brake;
+  const throttle = s.burnoutActive ? 1 : input.burnout ? 0 : rawThrottle,
+    reverse = s.burnoutActive ? 0 : input.burnout ? 1 : rawReverse;
+  s.throttle +=
+    (throttle - s.throttle) *
+    (1 - Math.exp(-(throttle > s.throttle ? 7 : 14) * dt));
+  s.serviceBrake +=
+    ((longitudinal > 1 ? reverse : 0) - s.serviceBrake) *
+    (1 - Math.exp(-16 * dt));
+  s.handbrake +=
+    (pedal(input.brake) - s.handbrake) *
+    (1 - Math.exp(-(input.brake ? 18 : 9) * dt));
+  const previousSteerAngle = s.steerAngle;
   const requestedSteer = clamp(input.steer || 0, -1, 1),
     countersteering = requestedSteer * s.steer < 0;
   s.steer +=
@@ -135,7 +149,7 @@ function integrateCar(s, input, dt, road) {
   // Neutral steering with power retains the driver's slide; throttle release
   // requests recovery. This controller steers the tires, never rotates velocity.
   const powerSlide =
-    rawThrottle > 0.15 &&
+    s.throttle > 0.15 &&
     rawReverse === 0 &&
     !input.brake &&
     !burnoutRequested &&
@@ -143,7 +157,12 @@ function integrateCar(s, input, dt, road) {
   const driftEngaged =
     powerSlide && (Math.abs(sideslip) > 0.12 || s.driftControl > 0.4);
   if (driftEngaged) {
-    if (Math.abs(requestedSteer) > 0.05) s.driftTarget = requestedSteer * 0.46;
+    if (Math.abs(requestedSteer) > 0.05)
+      s.driftTarget += clamp(
+        requestedSteer * 0.46 - s.driftTarget,
+        -CAR_SPEC.driftTargetRate * dt,
+        CAR_SPEC.driftTargetRate * dt,
+      );
     else if (Math.abs(s.driftTarget) < 0.12)
       s.driftTarget =
         Math.sign(sideslip) * clamp(Math.abs(sideslip), 0.2, 0.46);
@@ -163,7 +182,9 @@ function integrateCar(s, input, dt, road) {
       -0.11,
       0.11,
     ),
-    desiredSlip = powerSlide ? s.driftTarget : 0,
+    desiredSlip = powerSlide
+      ? s.driftTarget * (0.45 + 0.55 * smooth((s.throttle - 0.15) / 0.85))
+      : 0,
     driftSteering =
       frontTravel +
       balancedFrontSlip +
@@ -174,18 +195,16 @@ function integrateCar(s, input, dt, road) {
     -0.62,
     0.62,
   );
+  // Rack motion stays continuous through assist entry, lift-off and transitions.
+  // Limit the actual tire angle after every manual/assisted steering contribution.
+  s.steerAngle =
+    previousSteerAngle +
+    clamp(
+      s.steerAngle - previousSteerAngle,
+      -CAR_SPEC.steeringRate * dt,
+      CAR_SPEC.steeringRate * dt,
+    );
   const offroad = road.distance > road.halfWidth;
-  const throttle = s.burnoutActive ? 1 : input.burnout ? 0 : rawThrottle,
-    reverse = s.burnoutActive ? 0 : input.burnout ? 1 : rawReverse;
-  s.throttle +=
-    (throttle - s.throttle) *
-    (1 - Math.exp(-(throttle > s.throttle ? 7 : 14) * dt));
-  s.serviceBrake +=
-    ((longitudinal > 1 ? reverse : 0) - s.serviceBrake) *
-    (1 - Math.exp(-16 * dt));
-  s.handbrake +=
-    (pedal(input.brake) - s.handbrake) *
-    (1 - Math.exp(-(input.brake ? 18 : 9) * dt));
   updateEngine(s, s, { throttle, reverse }, dt);
   const transfer =
     (CAR_SPEC.mass * s.longitudinalAccel * CAR_SPEC.cgHeight) / wheelbase;

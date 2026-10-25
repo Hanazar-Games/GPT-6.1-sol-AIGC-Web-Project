@@ -26,11 +26,26 @@ export function updateEngine(state, car, input, dt) {
     if (state.gear <= 0) state.gear = 1;
     if (!car.burnoutActive && state.shiftRemaining === 0 && forward > 0) {
       const rpm = forward * wheelFactor * ratios[state.gear];
-      if (
-        rpm > 6500 &&
+      const poweredDrift =
+        (car.slip > 0.12 || car.driftControl > 0.4) &&
+        throttle > 0.3 &&
+        !input.reverse;
+      // During a slide, shift only when the next ratio can actually deliver
+      // more wheel force. Chassis speed alone misses redline wheelspin, while
+      // shifting at every brief straightening interrupts linked drifts.
+      const recoverTorque =
+        poweredDrift &&
+        state.rpm > 7000 &&
         state.gear < 6 &&
-        !(car.slip > 0.12 && throttle > 0.3 && !input.reverse)
-      ) {
+        Number.isFinite(car.rearWheelSpeed) &&
+        engineDriveForce(
+          { gear: state.gear + 1, shiftRemaining: 0.3 },
+          car.rearWheelSpeed,
+          throttle,
+          0,
+        ) >
+          engineDriveForce(state, car.rearWheelSpeed, throttle, 0) * 1.05;
+      if (state.gear < 6 && ((!poweredDrift && rpm > 6500) || recoverTorque)) {
         state.gear++;
         state.shiftRemaining = 0.3;
       } else if (rpm < 2600 && state.gear > 1) {
