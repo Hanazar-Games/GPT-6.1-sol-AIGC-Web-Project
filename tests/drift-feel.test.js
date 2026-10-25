@@ -96,3 +96,53 @@ test("self-alignment is bounded and inactive at rest or in reverse", () => {
     assert(Number.isFinite(car.steerAssist));
   }
 });
+test("power retains a slide with neutral steering; lifting restores grip without killing momentum", () => {
+  for (const speed of [12, 16, 20, 24])
+    for (const direction of [-1, 1]) {
+      const car = moving(speed);
+      let sustained = 0,
+        gap = 0,
+        longestGap = 0;
+      for (let i = 0; i < 1800; i++) {
+        stepCar(
+          car,
+          { throttle: true, steer: i < 120 ? direction : 0, brake: i < 24 },
+          dt,
+          road,
+        );
+        if (i > 120) {
+          sustained += car.drifting ? dt : 0;
+          gap = car.drifting ? 0 : gap + dt;
+          longestGap = Math.max(longestGap, gap);
+          assert(
+            car.slip < 0.8,
+            "neutral steering with power must not spin the car",
+          );
+        }
+      }
+      assert(
+        sustained > 12,
+        `entry ${speed}: powered neutral drift lasted only ${sustained}s`,
+      );
+      assert(longestGap < 1.6, "a gear change must not break the drift chain");
+      const before = { ...car },
+        powered = { ...car };
+      for (let i = 0; i < 240; i++) {
+        stepCar(car, {}, dt, road);
+        stepCar(powered, { throttle: true }, dt, road);
+      }
+      assert(
+        powered.slip > 0.2,
+        "keeping throttle must retain a distinct slide",
+      );
+      assert(
+        car.slip < 0.04 && Math.abs(car.yawRate) < 0.1,
+        "lift-off must recover grip",
+      );
+      assert(
+        car.speed > before.speed * 0.75,
+        "recovery must not fake braking the chassis",
+      );
+      assert(car.rearGrip > 0.95 && car.driftTarget === 0);
+    }
+});

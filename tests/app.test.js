@@ -164,3 +164,32 @@ test("instruments share the engine model and pause or reset preserves correct te
   env.click("return-menu");
   env.click("return-menu");
 });
+test("burnout keyboard input drives rear wheel visuals, HUD and engine and clears on pause or reset", () => {
+  env.click("start");
+  const front = world.wheels.find((w) => w.position.z > 0),
+    rear = world.wheels.find((w) => w.position.z < 0);
+  const frontStart = front.rotation.x,
+    rearStart = rear.rotation.x;
+  env.key("KeyB");
+  for (let i = 0; i < 40; i++) env.tick(0.05);
+  assert(state().car.burningOut && state().car.speed < 0.25);
+  assert(state().engine.rpm > 6000);
+  assert.equal(env.nodes.get("grip").textContent, "BURNOUT");
+  assert(Math.abs(front.rotation.x - frontStart) < 0.05);
+  assert(Math.abs(rear.rotation.x - rearStart) > 10);
+  env.key("Escape");
+  const paused = { ...state().car },
+    spin = rear.rotation.x;
+  env.tick(3);
+  assert.deepEqual(state().car, paused);
+  assert.equal(rear.rotation.x, spin);
+  env.click("dialog-action");
+  env.tick(0.1);
+  assert(!state().car.burnoutActive, "pause must release held burnout");
+  env.click("touch-reset");
+  assert.equal(state().car.rearWheelSpeed, 0);
+  assert.equal(state().engine.rpm, 900);
+  env.key("Escape");
+  env.click("return-menu");
+  env.click("return-menu");
+});

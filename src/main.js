@@ -143,7 +143,7 @@ function showHelp() {
   dialog(
     "DRIVER’S BRIEFING",
     "山路，交给你了。",
-    '<div class="control-row"><span>油门 / 刹车与倒车</span><span><kbd>W / ↑</kbd><kbd>S / ↓</kbd></span></div><div class="control-row"><span>转向</span><span><kbd>A / ←</kbd><kbd>D / →</kbd></span></div><div class="control-row"><span>手刹 / 甩尾</span><kbd>SPACE</kbd></div><div class="control-row"><span>切换镜头 / 重置车辆</span><span><kbd>C</kbd><kbd>R</kbd></span></div><p>入弯前减速，转向后短按手刹。松开手刹，及时向车尾滑出的方向反打。轻点油门保持滑动，松油帮助后轮恢复抓地；方向带有限回正辅助；松开方向并松油可以收车，长按手刹会损失速度。连续漂移提高倍率，回正 1.6 秒后结算。撞护栏会失去当前连击。</p><p>触屏设备使用屏幕底部的驾驶按钮。</p>',
+    '<div class="control-row"><span>油门 / 刹车与倒车</span><span><kbd>W / ↑</kbd><kbd>S / ↓</kbd></span></div><div class="control-row"><span>转向</span><span><kbd>A / ←</kbd><kbd>D / →</kbd></span></div><div class="control-row"><span>手刹 / 甩尾</span><kbd>SPACE</kbd></div><div class="control-row"><span>切换镜头 / 重置车辆</span><span><kbd>C</kbd><kbd>R</kbd></span></div><p>入弯前减速，转向后短按手刹。松开手刹，及时向车尾滑出的方向反打。保持油门可以维持漂移，松开方向也能接住侧滑；左右方向调整漂移方向，反打可切换甩尾。松开油门与方向，后轮逐步恢复抓地并收车。长按手刹会锁住后轮并损失速度。连续漂移提高倍率，回正 1.6 秒后结算。撞护栏会失去当前连击。</p><p>按住 B（或低速时 W+S）原地烧胎：前轮制动、后轮空转。松开即可结束，按住 Space 会锁住后轮。触屏设备使用屏幕底部的驾驶按钮。</p>',
     "准备好了",
     () => {},
   );
@@ -489,6 +489,7 @@ function controls() {
       (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0) -
       (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0),
     brake: keys.has("Space"),
+    burnout: keys.has("KeyB"),
   };
 }
 function finish() {
@@ -655,11 +656,13 @@ function updateHUD(dt) {
       : score.multiplier >= 2
         ? "GREAT DRIFT"
         : "DRIFT";
-  $("grip").textContent = carState.drifting
-    ? "SLIDING"
-    : nearestRoad(carState.x, carState.z).distance > HALF_WIDTH
-      ? "OFF ROAD"
-      : "GRIP";
+  $("grip").textContent = carState.burningOut
+    ? "BURNOUT"
+    : carState.drifting
+      ? "SLIDING"
+      : nearestRoad(carState.x, carState.z).distance > HALF_WIDTH
+        ? "OFF ROAD"
+        : "GRIP";
   $("lap-number").textContent = String(laps.laps + 1).padStart(2, "0");
   $("lap-time").textContent = formatLap(laps.current(clock.elapsed));
   $("lap-best").textContent = formatLap(profile.best(mode).bestLap);
@@ -723,20 +726,29 @@ function frame(now) {
   const signedSpeed =
     carState.vx * Math.sin(carState.yaw) + carState.vz * Math.cos(carState.yaw);
   for (const wheel of wheels) {
-    wheel.rotation.x += playing && !paused ? (signedSpeed * dt) / 0.37 : 0;
+    wheel.rotation.x +=
+      playing && !paused
+        ? (wheel.position.z > 0
+            ? signedSpeed / 0.37
+            : carState.rearWheelSpeed) * dt
+        : 0;
     if (wheel.position.z > 0) wheel.rotation.y = carState.steerAngle;
   }
   setBrake(
-    playing && (keys.has("Space") || keys.has("KeyS") || keys.has("ArrowDown")),
+    playing &&
+      (keys.has("Space") ||
+        keys.has("KeyS") ||
+        keys.has("ArrowDown") ||
+        keys.has("KeyB")),
   );
   updateEffects(
     carState,
     paused ? 0 : dt,
-    playing && !paused && carState.drifting,
+    playing && !paused && (carState.drifting || carState.tireSmoke > 0.12),
   );
   updateCamera(dt);
   if (playing) updateHUD(dt);
-  audio.update(drivetrain, carState.drifting, playing && !paused);
+  audio.update(drivetrain, carState.tireSmoke, playing && !paused);
   if (
     renderSchedule.shouldRender(now, {
       active: playing && !paused,

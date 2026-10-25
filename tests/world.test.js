@@ -123,3 +123,21 @@ test("steered wheel axle stays horizontal while the wheel spins", async () => {
     wheel.updateMatrix();
   }
 });
+test("stationary wheelspin emits smoke and short rear tire patches, then the smoke expires", async () => {
+  const { Matrix4, Vector3 } = await import("three");
+  world.resetEffects();
+  const s = { ...world.spawn(), vx: 0, vz: 0, speed: 0, tireSmoke: 1 };
+  for (let i = 0; i < 25; i++) world.updateEffects(s, 0.04, true);
+  const smoke = [];
+  world.scene.traverse((o) => {
+    if (o.name === "tire-smoke") smoke.push(o);
+  });
+  assert(smoke.filter((o) => o.visible && o.material.opacity > 0).length > 10);
+  const skids = world.scene.getObjectByName("skid-marks"),
+    matrix = new Matrix4();
+  skids.getMatrixAt(0, matrix);
+  assert(skids.count > 0);
+  assert(new Vector3().setFromMatrixColumn(matrix, 1).length() * 0.8 < 0.3);
+  world.updateEffects(s, 2, false);
+  assert(smoke.every((o) => !o.visible));
+});

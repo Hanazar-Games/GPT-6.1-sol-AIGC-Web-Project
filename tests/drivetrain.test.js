@@ -19,7 +19,9 @@ test("automatic gears rise with actual acceleration and recover cleanly to neutr
     gears = new Set();
   let shifts = 0,
     lastGear = 0;
-  for (let i = 0; i < 20 * 120; i++) {
+  // Torque now reaches the chassis through wheel slip and actual gear ratios.
+  // Include the slower high-gear acceleration, rather than assuming constant force.
+  for (let i = 0; i < 90 * 120; i++) {
     stepCar(vehicle, input, 1 / 120, { distance: 0, halfWidth: 10 });
     engine.update(vehicle, input, 1 / 120);
     assert(engine.rpm >= IDLE_RPM && engine.rpm <= REDLINE_RPM);

@@ -1,3 +1,9 @@
+import {
+  WHEEL_RADIUS,
+  initialEngineState,
+  updateEngine,
+  engineDriveForce,
+} from "./powertrain.js";
 export const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 export const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 export const CAR_SPEC = Object.freeze({
@@ -11,6 +17,9 @@ export const CAR_SPEC = Object.freeze({
   rearStiffness: 68000,
   frontFriction: 1.02,
   rearFriction: 1.12,
+  wheelRadius: WHEEL_RADIUS,
+  rearWheelInertia: 18,
+  longitudinalStiffness: 48000,
 });
 const wheelbase = CAR_SPEC.frontAxle + CAR_SPEC.rearAxle;
 const weight = CAR_SPEC.mass * CAR_SPEC.gravity;
@@ -23,6 +32,7 @@ const smooth = (value) => {
 };
 export function createCarState(x = 0, z = 0, yaw = 0) {
   return {
+    ...initialEngineState(),
     x,
     z,
     yaw,
@@ -36,6 +46,8 @@ export function createCarState(x = 0, z = 0, yaw = 0) {
     yawRate: 0,
     steerAngle: 0,
     steerAssist: 0,
+    driftControl: 0,
+    driftTarget: 0,
     handbrake: 0,
     throttle: 0,
     serviceBrake: 0,
@@ -49,6 +61,14 @@ export function createCarState(x = 0, z = 0, yaw = 0) {
     frontForceY: 0,
     rearForceX: 0,
     rearForceY: 0,
+    rearWheelSpeed: 0,
+    wheelInitialized: false,
+    rearSlipRatio: 0,
+    rearGrip: 1,
+    tireSlipSpeed: 0,
+    tireSmoke: 0,
+    burnoutActive: false,
+    burningOut: false,
     roll: 0,
     pitch: 0,
   };
@@ -66,6 +86,15 @@ function integrateCar(s, input, dt, road) {
     forwardZ = Math.cos(s.yaw);
   const longitudinal = s.vx * forwardX + s.vz * forwardZ;
   const lateral = s.vx * forwardZ - s.vz * forwardX;
+  if (!s.wheelInitialized) {
+    s.rearWheelSpeed = longitudinal / WHEEL_RADIUS;
+    s.wheelInitialized = true;
+  }
+  const rawThrottle = pedal(input.throttle),
+    rawReverse = pedal(input.reverse),
+    burnoutRequested = !!input.burnout || (rawThrottle > 0 && rawReverse > 0);
+  s.burnoutActive =
+    burnoutRequested && s.speed < 3.5 && longitudinal > -1 && !input.brake;
   const requestedSteer = clamp(input.steer || 0, -1, 1),
     countersteering = requestedSteer * s.steer < 0;
   s.steer +=
@@ -88,16 +117,66 @@ function integrateCar(s, input, dt, road) {
   // bounded self-aligning rack and quicker deliberate countersteer; all chassis
   // motion still comes from contact-patch forces, never a direct yaw correction.
   s.steerAssist =
-    clamp(-sideslip * 1.25 - clamp(slipRate * 0.25, -0.18, 0.18), -0.95, 0.95) *
-    sliding;
+    clamp(
+      -sideslip *
+        (rawThrottle > 0.2
+          ? 1.15 + smooth((Math.abs(sideslip) - 0.3) / 0.25) * 0.45
+          : 1.25) -
+        clamp(slipRate * 0.25, -0.18, 0.18),
+      -0.95,
+      0.95,
+    ) * sliding;
   s.steerAngle = clamp(
     s.steer * steeringRange * authority + s.steerAssist,
     -0.62,
     0.62,
   );
+  // Digital keys request a drift direction/angle once the rear has broken away.
+  // Neutral steering with power retains the driver's slide; throttle release
+  // requests recovery. This controller steers the tires, never rotates velocity.
+  const powerSlide =
+    rawThrottle > 0.15 &&
+    rawReverse === 0 &&
+    !input.brake &&
+    !burnoutRequested &&
+    longitudinal > 6;
+  const driftEngaged =
+    powerSlide && (Math.abs(sideslip) > 0.12 || s.driftControl > 0.4);
+  if (driftEngaged) {
+    if (Math.abs(requestedSteer) > 0.05) s.driftTarget = requestedSteer * 0.46;
+    else if (Math.abs(s.driftTarget) < 0.12)
+      s.driftTarget =
+        Math.sign(sideslip) * clamp(Math.abs(sideslip), 0.2, 0.46);
+  }
+  s.driftControl +=
+    ((driftEngaged ? 1 : 0) - s.driftControl) *
+    (1 - Math.exp(-(driftEngaged ? 10 : 6) * dt));
+  if (!driftEngaged && s.driftControl < 0.01) s.driftTarget = 0;
+  const frontTravel = Math.atan2(
+      lateral + CAR_SPEC.frontAxle * s.yawRate,
+      Math.max(3, longitudinal),
+    ),
+    balancedFrontSlip = clamp(
+      (s.rearForceY * CAR_SPEC.rearAxle) /
+        CAR_SPEC.frontAxle /
+        CAR_SPEC.frontStiffness,
+      -0.11,
+      0.11,
+    ),
+    desiredSlip = powerSlide ? s.driftTarget : 0,
+    driftSteering =
+      frontTravel +
+      balancedFrontSlip +
+      (desiredSlip - sideslip) * 0.65 -
+      slipRate * 0.23;
+  s.steerAngle = clamp(
+    s.steerAngle * (1 - s.driftControl) + driftSteering * s.driftControl,
+    -0.62,
+    0.62,
+  );
   const offroad = road.distance > road.halfWidth;
-  const throttle = pedal(input.throttle),
-    reverse = pedal(input.reverse);
+  const throttle = s.burnoutActive ? 1 : input.burnout ? 0 : rawThrottle,
+    reverse = s.burnoutActive ? 0 : input.burnout ? 1 : rawReverse;
   s.throttle +=
     (throttle - s.throttle) *
     (1 - Math.exp(-(throttle > s.throttle ? 7 : 14) * dt));
@@ -107,6 +186,7 @@ function integrateCar(s, input, dt, road) {
   s.handbrake +=
     (pedal(input.brake) - s.handbrake) *
     (1 - Math.exp(-(input.brake ? 18 : 9) * dt));
+  updateEngine(s, s, { throttle, reverse }, dt);
   const transfer =
     (CAR_SPEC.mass * s.longitudinalAccel * CAR_SPEC.cgHeight) / wheelbase;
   s.frontLoad = clamp(frontStaticLoad - transfer, weight * 0.18, weight * 0.82);
@@ -121,6 +201,15 @@ function integrateCar(s, input, dt, road) {
   // artificial steering rotation or energy to a stationary car.
   s.frontSlip = Math.atan2(-frontSide, Math.max(3, Math.abs(frontLong)));
   s.rearSlip = Math.atan2(-rearSide, Math.max(3, Math.abs(longitudinal)));
+  const wheelSurface = s.rearWheelSpeed * WHEEL_RADIUS;
+  s.rearSlipRatio =
+    (wheelSurface - longitudinal) / Math.max(3, Math.abs(longitudinal));
+  const spinning =
+      s.throttle * smooth((Math.max(0, s.rearSlipRatio) - 0.025) / 0.1),
+    gripTarget = 1 - spinning * 0.55;
+  s.rearGrip +=
+    (gripTarget - s.rearGrip) *
+    (1 - Math.exp(-(gripTarget < s.rearGrip ? 16 : 4) * dt));
   const surface = offroad ? 0.55 : 1,
     frontLimit = s.frontLoad * CAR_SPEC.frontFriction * surface,
     rearLimit = s.rearLoad * CAR_SPEC.rearFriction * surface,
@@ -128,24 +217,29 @@ function integrateCar(s, input, dt, road) {
       frontLimit *
       (1 - 0.12 * clamp((Math.abs(s.frontSlip) - 0.12) / 0.5, 0, 1)),
     rearPeak =
-      rearLimit * (1 - 0.16 * clamp((Math.abs(s.rearSlip) - 0.12) / 0.5, 0, 1));
+      rearLimit *
+      s.rearGrip *
+      (1 - 0.16 * clamp((Math.abs(s.rearSlip) - 0.12) / 0.5, 0, 1));
+  let motorForce = engineDriveForce(
+    s,
+    s.rearWheelSpeed,
+    s.throttle,
+    reverse > 0 && longitudinal <= 1 ? reverse : 0,
+  );
+  if (reverse > 0 && longitudinal > 1) motorForce = 0;
   let frontX = 0,
     frontY =
       frontPeak *
       Math.tanh((CAR_SPEC.frontStiffness * s.frontSlip) / frontPeak),
-    rearX =
-      s.throttle *
-      9000 *
-      clamp(1 - (Math.max(0, longitudinal) / 64) ** 2, 0, 1),
+    rearX = CAR_SPEC.longitudinalStiffness * s.rearSlipRatio,
     rearY =
       rearPeak * Math.tanh((CAR_SPEC.rearStiffness * s.rearSlip) / rearPeak);
   if (reverse > 0) {
     if (longitudinal > 1) {
       frontX = -15500 * 0.65 * s.serviceBrake;
-      rearX = -15500 * 0.35 * s.serviceBrake;
-    } else
-      rearX = -4200 * reverse * clamp(1 - Math.max(0, -longitudinal) / 9, 0, 1);
+    }
   }
+  if (s.burnoutActive) frontX = -frontLimit * Math.tanh(longitudinal / 0.08);
   // Longitudinal and lateral demands share the same contact-patch budget.
   // Throttle can therefore break rear grip while the front axle keeps steering.
   const frontScale = Math.min(
@@ -157,17 +251,34 @@ function integrateCar(s, input, dt, road) {
   frontY *= frontScale;
   rearX *= rearScale;
   rearY *= rearScale;
-  const rearContactSpeed = Math.max(0.2, Math.hypot(longitudinal, rearSide)),
-    lockedForce = rearLimit * 0.72;
-  rearX +=
-    ((-lockedForce * longitudinal) / rearContactSpeed - rearX) * s.handbrake;
-  rearY += ((-lockedForce * rearSide) / rearContactSpeed - rearY) * s.handbrake;
+  const brakeTorque =
+      s.handbrake * 6500 + s.serviceBrake * 15500 * 0.35 * WHEEL_RADIUS,
+    wheelTorque = (motorForce - rearX) * WHEEL_RADIUS - s.rearWheelSpeed * 1.2,
+    unbrakedWheel =
+      s.rearWheelSpeed + (wheelTorque / CAR_SPEC.rearWheelInertia) * dt;
+  s.rearWheelSpeed =
+    Math.sign(unbrakedWheel) *
+    Math.max(
+      0,
+      Math.abs(unbrakedWheel) - (brakeTorque / CAR_SPEC.rearWheelInertia) * dt,
+    );
   const parked = input.brake && Math.hypot(longitudinal, lateral) < 0.25;
   if (parked) {
     frontX = 0;
     frontY = 0;
     rearX = 0;
     rearY = 0;
+    s.rearWheelSpeed = 0;
+  }
+  // Static front-brake hold: balance available rear traction without pinning a
+  // moving chassis. Rear wheels remain free to rotate and heat the contact patch.
+  if (s.burnoutActive && Math.hypot(longitudinal, lateral) < 0.25) {
+    const hold = Math.min(
+      1,
+      frontLimit / Math.max(1, Math.hypot(rearX, rearY)),
+    );
+    frontX = (-rearX * cos - rearY * sin) * hold;
+    frontY = (rearX * sin - rearY * cos) * hold;
   }
   s.frontForceX = frontX;
   s.frontForceY = frontY;
@@ -197,6 +308,9 @@ function integrateCar(s, input, dt, road) {
   s.yawRate *= Math.exp(-0.15 * dt);
   if (
     parked ||
+    (s.burnoutActive &&
+      Math.hypot(s.vx, s.vz) < 0.25 &&
+      Math.hypot(rearX, rearY) <= frontLimit) ||
     (!input.throttle && !input.reverse && Math.hypot(s.vx, s.vz) < 0.04)
   ) {
     s.vx = 0;
@@ -207,6 +321,13 @@ function integrateCar(s, input, dt, road) {
   s.x += s.vx * dt;
   s.z += s.vz * dt;
   s.speed = Math.hypot(s.vx, s.vz);
+  s.tireSlipSpeed = Math.hypot(
+    s.rearWheelSpeed * WHEEL_RADIUS - longitudinal,
+    rearSide,
+  );
+  s.tireSmoke = clamp((s.tireSlipSpeed - 1.5) / 12, 0, 1) * (offroad ? 0.3 : 1);
+  s.burningOut =
+    s.burnoutActive && s.rearWheelSpeed * WHEEL_RADIUS - longitudinal > 3;
   s.slip =
     s.speed > 0.1 ? Math.abs(wrapAngle(Math.atan2(s.vx, s.vz) - s.yaw)) : 0;
   s.drifting =

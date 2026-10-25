@@ -27,7 +27,14 @@ function moving(speed = 20) {
 }
 const energy = (car) =>
   0.5 * CAR_SPEC.mass * (car.vx ** 2 + car.vz ** 2) +
-  0.5 * CAR_SPEC.yawInertia * car.yawRate ** 2;
+  0.5 * CAR_SPEC.yawInertia * car.yawRate ** 2 +
+  0.5 *
+    CAR_SPEC.rearWheelInertia *
+    (car.wheelInitialized
+      ? car.rearWheelSpeed
+      : (car.vx * Math.sin(car.yaw) + car.vz * Math.cos(car.yaw)) /
+        CAR_SPEC.wheelRadius) **
+      2;
 test("stationary steering creates no rotation or energy and yaw momentum survives steering release", () => {
   const parked = drive(createCarState(1, 2, 0.7), { steer: 1 }, 4);
   assert.equal(parked.x, 1);

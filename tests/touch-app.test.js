@@ -107,3 +107,17 @@ test("a handbrake tap between frames reaches physics, then releases without stic
   env.click("return-menu");
   env.click("return-menu");
 });
+test("touch burnout can be held and cancellation releases the brake and throttle together", () => {
+  env.click("start");
+  const burnout = env.nodes.get("touch-burnout");
+  env.event(burnout, "pointerdown", { pointerId: 20, button: 0 });
+  for (let i = 0; i < 40; i++) env.tick(0.05);
+  assert(state().car.burningOut && state().car.speed < 0.25);
+  env.event(burnout, "pointercancel", { pointerId: 20 });
+  env.tick(0.1);
+  assert(!state().car.burnoutActive);
+  assert(!burnout.classList.contains("pressed"));
+  env.click("touch-reset");
+  env.tick(0.1);
+  assert.equal(state().car.speed, 0);
+});

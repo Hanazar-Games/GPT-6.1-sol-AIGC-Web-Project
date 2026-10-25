@@ -91,6 +91,10 @@ export class EngineAudio {
       0.1,
     );
     this.engineGain.gain.setTargetAtTime(0.025 + engine.load * 0.055, t, 0.1);
-    this.tires.gain.setTargetAtTime(drift ? 0.1 : 0, t, 0.08);
+    this.tires.gain.setTargetAtTime(
+      Math.min(1, Math.max(0, Number(drift) || 0)) * 0.13,
+      t,
+      0.08,
+    );
   }
 }
