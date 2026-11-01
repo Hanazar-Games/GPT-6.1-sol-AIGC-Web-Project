@@ -193,3 +193,78 @@ test("burnout keyboard input drives rear wheel visuals, HUD and engine and clear
   env.click("return-menu");
   env.click("return-menu");
 });
+test("low-frame-rate burnout keeps wheel phase synchronized and pause freezes the complete view", async () => {
+  const { renderedCamera } = await import("./support/renderer.js");
+  env.click("start");
+  env.key("KeyB");
+  for (let i = 0; i < 40; i++) env.tick(0.05);
+  const rear = world.wheels.find((w) => w.position.z < 0),
+    before = rear.rotation.x;
+  env.tick(0.25);
+  assert(
+    rear.rotation.x - before > 8,
+    "quarter-second physics catch-up must not animate only 80 ms of wheelspin",
+  );
+  env.key("Escape");
+  const position = world.car.position.clone(),
+    rotation = world.car.rotation.clone(),
+    cameraPosition = renderedCamera.position.clone(),
+    cameraRotation = renderedCamera.quaternion.clone(),
+    spin = rear.rotation.x;
+  env.tick(5);
+  assert(world.car.position.equals(position));
+  assert(world.car.rotation.equals(rotation));
+  assert(renderedCamera.position.equals(cameraPosition));
+  assert(renderedCamera.quaternion.equals(cameraRotation));
+  assert.equal(rear.rotation.x, spin);
+  env.click("dialog-action");
+  env.click("touch-reset");
+  env.tick(0.001);
+  assert.equal(
+    rear.rotation.x,
+    0,
+    "reset must discard wheel phase even before another physics step",
+  );
+  assert.equal(world.car.position.x, state().car.x);
+  env.key("Escape");
+  env.click("return-menu");
+  env.click("return-menu");
+});
+test("hood view stays attached to the rendered car through a powered turn", async () => {
+  const { renderedCamera } = await import("./support/renderer.js");
+  const { Vector3 } = await import("three");
+  env.click("start");
+  for (let i = 0; i < 3 && world.car.visible; i++) {
+    env.click("touch-camera");
+    env.tick(0.001);
+  }
+  assert(!world.car.visible);
+  env.key("KeyW");
+  for (let i = 0; i < 100; i++) {
+    if (i === 45) env.key("KeyA");
+    env.tick(1 / 60);
+    const yaw = world.car.rotation.y;
+    assert(
+      Math.abs(
+        renderedCamera.position.x - world.car.position.x - Math.sin(yaw) * 0.9,
+      ) < 1e-8,
+    );
+    assert(
+      Math.abs(
+        renderedCamera.position.z - world.car.position.z - Math.cos(yaw) * 0.9,
+      ) < 1e-8,
+    );
+    assert.equal(renderedCamera.position.y, 1.18);
+    const expected = new Vector3(
+      Math.sin(yaw) * 6.1,
+      -0.18,
+      Math.cos(yaw) * 6.1,
+    ).normalize();
+    assert(
+      renderedCamera.getWorldDirection(new Vector3()).dot(expected) > 0.999999,
+    );
+  }
+  env.key("Escape");
+  env.click("return-menu");
+  env.click("return-menu");
+});

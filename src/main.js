@@ -31,6 +31,7 @@ import { RenderQuality, RenderSchedule } from "./quality.js";
 import { createMinimap } from "./minimap.js";
 import { Drivetrain, REDLINE_RPM } from "./drivetrain.js";
 import { drivingCameraHeading } from "./camera.js";
+import { VehiclePresentation } from "./presentation.js";
 const $ = (id) => document.getElementById(id);
 let renderer;
 try {
@@ -107,6 +108,8 @@ for (const button of document.querySelectorAll("[data-mode]")) {
 }
 const p = spawn();
 carState = createCarState(p.x, p.z, p.yaw);
+const presentation = new VehiclePresentation(carState);
+const renderState = presentation.sample(1);
 laps = new LapTracker(nearestRoad(p.x, p.z).progress);
 sessionStats = { distance: 0, topSpeed: 0, bestChain: 0 };
 car.position.set(p.x, 0, p.z);
@@ -264,6 +267,8 @@ function start() {
   score = new DriftScore();
   const s = spawn();
   carState = createCarState(s.x, s.z, s.yaw);
+  presentation.reset(carState);
+  presentation.sample(1, renderState);
   drivetrain.reset();
   laps = new LapTracker(nearestRoad(s.x, s.z).progress);
   sessionStats = { distance: 0, topSpeed: 0, bestChain: 0 };
@@ -371,6 +376,9 @@ function reset() {
   const near = nearestRoad(carState.x, carState.z),
     t = tangents[near.index];
   carState = createCarState(near.x, near.z, Math.atan2(t.x, t.z));
+  presentation.reset(carState);
+  presentation.sample(1, renderState);
+  accumulator = 0;
   car.rotation.x = 0;
   car.rotation.z = 0;
   drivetrain.reset();
@@ -543,6 +551,7 @@ function step(dt) {
     if (announceImpact) notify("擦碰护栏 · 连击中断");
   }
   if (after.distance > HALF_WIDTH) carState.drifting = false;
+  presentation.advance(carState, dt);
   drivetrain.update(carState, input, dt);
   score.update(carState, dt);
   sessionStats.bestChain = Math.max(sessionStats.bestChain, score.chain);
@@ -571,7 +580,8 @@ function resetCamera() {
   camera.lookAt(smoothedLook);
 }
 function updateCamera(dt) {
-  const s = carState;
+  if (playing && paused) return;
+  const s = renderState;
   if (!playing) {
     car.visible = true;
     if (!reducedMotion.matches) menuTime += dt;
@@ -614,12 +624,11 @@ function updateCamera(dt) {
       height,
       s.z - Math.cos(heading) * distance,
     );
-    camera.position.lerp(
-      desired,
-      1 - Math.exp(-dt * (cameraMode === 2 ? 24 : 5)),
-    );
+    if (cameraMode === 2) camera.position.copy(desired);
+    else camera.position.lerp(desired, 1 - Math.exp(-dt * 5));
     look.set(s.x + Math.sin(heading) * 7, 1, s.z + Math.cos(heading) * 7);
-    smoothedLook.lerp(look, 1 - Math.exp(-dt * 9));
+    if (cameraMode === 2) smoothedLook.copy(look);
+    else smoothedLook.lerp(look, 1 - Math.exp(-dt * 9));
     camera.fov = T.MathUtils.lerp(
       camera.fov,
       60 + s.speed * 0.25,
@@ -685,7 +694,8 @@ function frame(now) {
     return;
   }
   const elapsed = Math.max(0, (now - last) / 1000);
-  const dt = Math.min(elapsed, 0.08);
+  const dt = Math.min(elapsed, 0.25);
+  let simulated = false;
   last = now;
   if (noticeUntil > 0 && now >= noticeUntil) {
     $("notice").textContent = "";
@@ -701,6 +711,7 @@ function frame(now) {
     let count = 0;
     while (accumulator >= 1 / 120 && count++ < 30) {
       step(1 / 120);
+      simulated = true;
       accumulator -= 1 / 120;
       if (paused) {
         accumulator = 0;
@@ -709,30 +720,21 @@ function frame(now) {
     }
     if (clock.finished) finish();
   } else accumulator = 0;
-  car.position.set(carState.x, 0, carState.z);
-  car.rotation.y = carState.yaw;
+  if (simulated || (playing && !paused))
+    presentation.sample(accumulator * 120, renderState);
+  else if (!playing) presentation.sample(1, renderState);
+  car.position.set(renderState.x, 0, renderState.z);
+  car.rotation.y = renderState.yaw;
   groundEffects.position.copy(car.position);
-  groundEffects.rotation.y = carState.yaw;
-  car.rotation.z = T.MathUtils.lerp(
-    car.rotation.z,
-    playing ? carState.roll : 0,
-    dt * 5,
-  );
-  car.rotation.x = T.MathUtils.lerp(
-    car.rotation.x,
-    playing ? carState.pitch : 0,
-    dt * 5,
-  );
-  const signedSpeed =
-    carState.vx * Math.sin(carState.yaw) + carState.vz * Math.cos(carState.yaw);
+  groundEffects.rotation.y = renderState.yaw;
+  car.rotation.z = playing ? renderState.roll : 0;
+  car.rotation.x = playing ? renderState.pitch : 0;
   for (const wheel of wheels) {
-    wheel.rotation.x +=
-      playing && !paused
-        ? (wheel.position.z > 0
-            ? signedSpeed / 0.37
-            : carState.rearWheelSpeed) * dt
-        : 0;
-    if (wheel.position.z > 0) wheel.rotation.y = carState.steerAngle;
+    wheel.rotation.x =
+      wheel.position.z > 0
+        ? renderState.frontWheelSpin
+        : renderState.rearWheelSpin;
+    if (wheel.position.z > 0) wheel.rotation.y = renderState.steerAngle;
   }
   setBrake(
     playing &&
