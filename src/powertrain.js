@@ -74,17 +74,28 @@ export function engineDriveForce(state, wheelSpeed, throttle, reverse) {
   const surfaceSpeed = wheelSpeed * WHEEL_RADIUS;
   if (reverse > 0)
     return -4200 * reverse * clamp(1 - Math.max(0, -surfaceSpeed) / 9, 0, 1);
-  if (throttle <= 0 || state.gear <= 0) return 0;
-  const ratio = ratios[state.gear],
+  if (state.gear === 0) return 0;
+  const ratio = state.gear < 0 ? 3.2 : ratios[state.gear],
     rpm = Math.abs(surfaceSpeed) * wheelFactor * ratio,
     limiter = clamp((REDLINE_RPM - rpm) / 500, 0, 1),
     torqueCurve =
       0.8 + 0.2 * Math.sin(Math.PI * clamp(rpm / REDLINE_RPM, 0, 1));
-  return (
-    ((11000 * ratio) / ratios[1]) *
-    throttle *
-    torqueCurve *
-    limiter *
-    (state.shiftRemaining > 0 ? 0.8 : 1)
-  );
+  const drive =
+    state.gear > 0
+      ? ((11000 * ratio) / ratios[1]) *
+        throttle *
+        torqueCurve *
+        limiter *
+        (state.shiftRemaining > 0 ? 0.8 : 1)
+      : 0;
+  // Closed-throttle drag returns through the selected ratio to the driven
+  // wheels. Fade the virtual clutch at walking speed to avoid stop/start chatter.
+  const coupling = clamp((Math.abs(surfaceSpeed) - 1) / 3, 0, 1),
+    dragTorque = 20 + 50 * clamp(rpm / REDLINE_RPM, 0, 1),
+    coastForce =
+      ((Math.sign(surfaceSpeed) * dragTorque * ratio * 5.2) / WHEEL_RADIUS) *
+      (1 - throttle) ** 2 *
+      coupling *
+      (state.shiftRemaining > 0 ? 0.5 : 1);
+  return drive - coastForce;
 }

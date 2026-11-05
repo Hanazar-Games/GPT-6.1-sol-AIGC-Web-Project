@@ -185,7 +185,32 @@
           <div class="speed"><b id="speed">000</b><span>KM/H</span></div>
           <div class="rpm"><i id="rpm"></i></div>
           <div class="telemetry-bottom">
-            <span>KAGE 86 / FR</span><span id="grip">GRIP</span>
+            <span id="slip-angle" aria-label="漂移方向和角度">ANGLE 00°</span
+            ><span id="grip">GRIP</span>
+          </div>
+          <div class="drive-inputs">
+            <span
+              >GAS<i
+                ><b
+                  id="throttle-input"
+                  role="meter"
+                  aria-label="实际油门"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  aria-valuenow="0"
+                ></b></i
+            ></span>
+            <span
+              >BRK<i
+                ><b
+                  id="brake-input"
+                  role="meter"
+                  aria-label="实际制动"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  aria-valuenow="0"
+                ></b></i
+            ></span>
           </div>
         </div>
       </div>

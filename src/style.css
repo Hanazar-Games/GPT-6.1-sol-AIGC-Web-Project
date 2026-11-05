@@ -559,6 +559,36 @@ footer b {
 #grip {
   color: var(--acid);
 }
+.drive-inputs {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+  color: #8d9d96;
+  font-size: 7px;
+  letter-spacing: 1px;
+}
+.drive-inputs > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+.drive-inputs i {
+  flex: 1;
+  height: 3px;
+  background: #ffffff20;
+  overflow: hidden;
+}
+.drive-inputs b {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--acid);
+}
+#brake-input {
+  background: #ff8166;
+}
 .drive-help {
   position: fixed;
   bottom: 26px;

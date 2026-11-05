@@ -32,6 +32,7 @@ import { createMinimap } from "./minimap.js";
 import { Drivetrain, REDLINE_RPM } from "./drivetrain.js";
 import { drivingCameraHeading } from "./camera.js";
 import { VehiclePresentation } from "./presentation.js";
+import { drivingFeedback } from "./feedback.js";
 const $ = (id) => document.getElementById(id);
 let renderer;
 try {
@@ -146,7 +147,7 @@ function showHelp() {
   dialog(
     "DRIVER’S BRIEFING",
     "山路，交给你了。",
-    '<div class="control-row"><span>油门 / 刹车与倒车</span><span><kbd>W / ↑</kbd><kbd>S / ↓</kbd></span></div><div class="control-row"><span>转向</span><span><kbd>A / ←</kbd><kbd>D / →</kbd></span></div><div class="control-row"><span>手刹 / 甩尾</span><kbd>SPACE</kbd></div><div class="control-row"><span>切换镜头 / 重置车辆</span><span><kbd>C</kbd><kbd>R</kbd></span></div><p>入弯前减速，转向后短按手刹。松开手刹，及时向车尾滑出的方向反打。保持油门可以维持漂移，松开方向也能接住侧滑；左右方向调整漂移方向，反打可切换甩尾。松开油门与方向，后轮逐步恢复抓地并收车。长按手刹会锁住后轮并损失速度。连续漂移提高倍率，回正 1.6 秒后结算。撞护栏会失去当前连击。</p><p>按住 B（或低速时 W+S）原地烧胎：前轮制动、后轮空转。松开即可结束，按住 Space 会锁住后轮。触屏设备使用屏幕底部的驾驶按钮。</p>',
+    '<div class="control-row"><span>油门 / 刹车与倒车</span><span><kbd>W / ↑</kbd><kbd>S / ↓</kbd></span></div><div class="control-row"><span>转向</span><span><kbd>A / ←</kbd><kbd>D / →</kbd></span></div><div class="control-row"><span>手刹 / 甩尾</span><kbd>SPACE</kbd></div><div class="control-row"><span>切换镜头 / 重置车辆</span><span><kbd>C</kbd><kbd>R</kbd></span></div><p>入弯前减速，转向后短按手刹。松开手刹，及时向车尾滑出的方向反打。保持油门可以维持漂移，松开方向也能接住侧滑；左右方向调整漂移方向，反打可切换甩尾。松开油门与方向，后轮逐步恢复抓地并收车。长按手刹会锁住后轮并损失速度。连续漂移提高倍率，回正 1.6 秒后结算。撞护栏会失去当前连击。</p><p>按住 B（或低速时 W+S）原地烧胎：前轮制动、后轮空转。松开即可结束，按住 Space 会锁住后轮。触屏设备使用屏幕底部的驾驶按钮。仪表 L/R 显示漂移方向和角度，GAS/BRK 显示实际油门与制动；RECOVER 表示收车，COAST 表示松油滑行。</p>',
     "准备好了",
     () => {},
   );
@@ -385,6 +386,8 @@ function reset() {
   score.reset();
   laps.reanchor(near.progress, clock.elapsed);
   resetCamera();
+  hudTime = Infinity;
+  updateHUD(0);
   notify("已返回赛道 · 本圈不计圈速，过线后重新计时", 3);
 }
 addEventListener("keydown", (e) => {
@@ -665,13 +668,17 @@ function updateHUD(dt) {
       : score.multiplier >= 2
         ? "GREAT DRIFT"
         : "DRIFT";
-  $("grip").textContent = carState.burningOut
-    ? "BURNOUT"
-    : carState.drifting
-      ? "SLIDING"
-      : nearestRoad(carState.x, carState.z).distance > HALF_WIDTH
-        ? "OFF ROAD"
-        : "GRIP";
+  const feedback = drivingFeedback(
+    carState,
+    nearestRoad(carState.x, carState.z).distance > HALF_WIDTH,
+  );
+  $("grip").textContent = feedback.status;
+  $("slip-angle").textContent = feedback.angle;
+  for (const name of ["throttle", "brake"]) {
+    const value = feedback[name] * 100;
+    $(name + "-input").style.width = value + "%";
+    $(name + "-input").setAttribute("aria-valuenow", String(Math.round(value)));
+  }
   $("lap-number").textContent = String(laps.laps + 1).padStart(2, "0");
   $("lap-time").textContent = formatLap(laps.current(clock.elapsed));
   $("lap-best").textContent = formatLap(profile.best(mode).bestLap);

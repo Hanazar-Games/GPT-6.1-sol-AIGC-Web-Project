@@ -268,3 +268,27 @@ test("hood view stays attached to the rendered car through a powered turn", asyn
   env.click("return-menu");
   env.click("return-menu");
 });
+test("driving instruments show effective pedals, coast recovery and reset immediately", () => {
+  env.click("start");
+  env.key("KeyB");
+  for (let i = 0; i < 30; i++) env.tick(0.05);
+  assert.equal(env.nodes.get("grip").textContent, "BURNOUT");
+  assert(parseFloat(env.nodes.get("throttle-input").style.width) > 95);
+  assert.equal(env.nodes.get("brake-input").style.width, "100%");
+  assert.equal(env.nodes.get("slip-angle").textContent, "ANGLE 00°");
+  env.click("touch-reset");
+  assert.equal(env.nodes.get("throttle-input").style.width, "0%");
+  assert.equal(env.nodes.get("brake-input").style.width, "0%");
+  assert.equal(env.nodes.get("grip").textContent, "GRIP");
+  env.key("KeyB", "keyup");
+  env.key("KeyW");
+  for (let i = 0; i < 20; i++) env.tick(0.05);
+  assert(parseFloat(env.nodes.get("throttle-input").style.width) > 95);
+  env.key("KeyW", "keyup");
+  for (let i = 0; i < 10; i++) env.tick(0.05);
+  assert.equal(env.nodes.get("grip").textContent, "COAST");
+  assert(parseFloat(env.nodes.get("throttle-input").style.width) < 1);
+  env.key("Escape");
+  env.click("return-menu");
+  env.click("return-menu");
+});

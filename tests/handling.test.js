@@ -177,3 +177,35 @@ test("tire dynamics remain consistent at 60, 120 and 240 Hz", () => {
     assert(Math.abs(car.yaw - cars[0].yaw) < 0.03);
   }
 });
+test("closed-throttle coast dissipates chassis and wheel energy without reversing either", () => {
+  for (const step of [1 / 120, 1 / 240]) {
+    const car = moving(18);
+    car.gear = 2;
+    car.wheelInitialized = true;
+    car.rearWheelSpeed = 18 / CAR_SPEC.wheelRadius;
+    let previous = energy(car);
+    drive(
+      car,
+      (state) => {
+        const current = energy(state);
+        assert(
+          current <= previous + 1,
+          "an unpowered drivetrain must not add energy",
+        );
+        assert(
+          state.vz >= 0 && state.rearWheelSpeed >= 0,
+          "engine drag must not become reverse drive",
+        );
+        previous = current;
+        return {};
+      },
+      4,
+      road,
+      step,
+    );
+    assert(
+      car.speed < 13 && car.speed > 5,
+      "coast braking should be useful and progressive",
+    );
+  }
+});

@@ -119,3 +119,21 @@ test("redline wheelspin permits a drift upshift when it restores wheel force, wi
     "shift cooldown must block another immediate gear change",
   );
 });
+test("closed-throttle engine drag opposes wheel rotation through the selected ratio", async () => {
+  const { engineDriveForce } = await import("../src/powertrain.js");
+  const force = (gear, speed, throttle = 0) =>
+    engineDriveForce({ gear, shiftRemaining: 0 }, speed / 0.37, throttle, 0);
+  assert(force(2, 20) < 0);
+  assert(force(-1, -6) > 0);
+  assert(
+    Math.abs(force(2, 20)) > Math.abs(force(5, 20)),
+    "a lower ratio must provide stronger coast retardation",
+  );
+  assert.equal(force(0, 20), 0, "neutral must decouple engine drag");
+  assert.equal(
+    force(1, 0.5),
+    0,
+    "low-speed clutch fade must prevent creeping-speed chatter",
+  );
+  assert(force(2, 20, 1) > 0, "full throttle must still deliver forward drive");
+});
