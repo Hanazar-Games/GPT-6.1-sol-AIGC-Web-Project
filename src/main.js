@@ -12,6 +12,7 @@ import {
   HALF_WIDTH,
   updateEffects,
   resetEffects,
+  breakEffectsTrail,
   groundEffects,
   setBrake,
 } from "./world.js";
@@ -380,6 +381,7 @@ function reset() {
   presentation.reset(carState);
   presentation.sample(1, renderState);
   accumulator = 0;
+  breakEffectsTrail();
   car.rotation.x = 0;
   car.rotation.z = 0;
   drivetrain.reset();
@@ -473,7 +475,9 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden && playing && !paused) togglePause();
 });
 function releasePointer(e) {
-  keys.release("pointer:" + e.pointerId, e.type === "pointercancel");
+  const source = "pointer:" + e.pointerId;
+  if (e.type === "lostpointercapture") keys.cancelHeld(source);
+  else keys.release(source, e.type === "pointercancel");
   syncInputButtons();
 }
 // Window listeners also release input when pointer capture is unavailable.
@@ -751,7 +755,7 @@ function frame(now) {
         keys.has("KeyB")),
   );
   updateEffects(
-    carState,
+    renderState,
     paused ? 0 : dt,
     playing && !paused && (carState.drifting || carState.tireSmoke > 0.12),
   );

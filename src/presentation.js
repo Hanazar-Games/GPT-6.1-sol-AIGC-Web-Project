@@ -11,6 +11,7 @@ const fields = [
   "roll",
   "pitch",
   "steerAngle",
+  "tireSmoke",
 ];
 // Keep rendering between the last two completed physics states. Wheel rotation
 // advances in physics time as well, including frames with multiple catch-up steps.

@@ -13,6 +13,11 @@ export class InputState {
     this.sources.delete(source);
     if (cancelled) this.pulses.delete(source);
   }
+  cancelHeld(source) {
+    // A normal pointerup is followed by lostpointercapture. Preserve its queued
+    // tap; only cancel capture loss that interrupted a still-held gesture.
+    if (this.sources.has(source)) this.release(source, true);
+  }
   has(code) {
     for (const held of this.sources.values()) if (held === code) return true;
     for (const pulse of this.pulses.values())

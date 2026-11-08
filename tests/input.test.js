@@ -58,3 +58,22 @@ test("device removal and pause clear their pending taps without releasing anothe
     "cancelled gestures must not queue handbrake taps",
   );
 });
+test("unexpected capture loss cancels only a held gesture while completed taps survive", () => {
+  const input = new InputState();
+  input.press("pointer:1", "Space");
+  input.cancelHeld("pointer:1");
+  assert(!input.has("Space"));
+  input.press("pointer:2", "Space");
+  input.release("pointer:2");
+  input.cancelHeld("pointer:2");
+  assert(
+    input.has("Space"),
+    "normal pointerup followed by capture loss must retain the minimum tap",
+  );
+  input.advance(0.13);
+  assert(!input.has("Space"));
+  input.press("key:Space", "Space");
+  input.press("pointer:3", "Space");
+  input.cancelHeld("pointer:3");
+  assert(input.has("Space"), "capture loss must not release a keyboard brake");
+});

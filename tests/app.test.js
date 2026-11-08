@@ -292,3 +292,47 @@ test("driving instruments show effective pedals, coast recovery and reset immedi
   env.click("return-menu");
   env.click("return-menu");
 });
+test("new tire smoke follows the displayed rear contacts during an interpolated slide", async () => {
+  const { Matrix4 } = await import("three");
+  env.click("start");
+  env.key("KeyW");
+  for (let i = 0; i < 40; i++) env.tick(0.05);
+  env.key("KeyA");
+  env.key("Space");
+  env.key("Space", "keyup");
+  let checked = false;
+  for (let i = 0; i < 80 && !checked; i++) {
+    env.tick(0.01);
+    const fresh = [];
+    world.scene.traverse((o) => {
+      if (
+        o.name === "tire-smoke" &&
+        o.visible &&
+        Math.abs(o.position.y - 0.35) < 1e-8
+      )
+        fresh.push(o);
+    });
+    if (!fresh.length) continue;
+    assert.equal(fresh.length, 2);
+    const transform = new Matrix4()
+      .makeRotationY(world.car.rotation.y)
+      .setPosition(world.car.position);
+    const contacts = world.wheels
+      .filter((w) => w.position.z < 0)
+      .map((w) => w.position.clone().applyMatrix4(transform).setY(0.35));
+    for (const particle of fresh)
+      assert(
+        Math.min(...contacts.map((p) => p.distanceTo(particle.position))) <
+          1e-6,
+        "effects must use the displayed pose instead of the next physics pose",
+      );
+    checked = true;
+  }
+  assert(
+    checked,
+    "the handbrake slide must emit smoke for the contact alignment check",
+  );
+  env.key("Escape");
+  env.click("return-menu");
+  env.click("return-menu");
+});

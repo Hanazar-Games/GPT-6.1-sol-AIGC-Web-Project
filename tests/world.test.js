@@ -141,3 +141,100 @@ test("stationary wheelspin emits smoke and short rear tire patches, then the smo
   world.updateEffects(s, 2, false);
   assert(smoke.every((o) => !o.visible));
 });
+test("curved skid segments connect each rear tire's successive contact positions", async () => {
+  const { Matrix4, Vector3 } = await import("three");
+  const contacts = (s) => {
+    const transform = new Matrix4()
+      .makeRotationY(s.yaw)
+      .setPosition(s.x, 0, s.z);
+    return world.wheels
+      .filter((w) => w.position.z < 0)
+      .map((w) => w.position.clone().applyMatrix4(transform).setY(0.09));
+  };
+  const first = {
+    x: 0,
+    z: 0,
+    yaw: 0,
+    vx: 3,
+    vz: 12,
+    speed: Math.hypot(3, 12),
+    tireSmoke: 1,
+  };
+  const second = {
+    x: 0.2,
+    z: 0.7,
+    yaw: 0.55,
+    vx: 10,
+    vz: 2,
+    speed: Math.hypot(10, 2),
+    tireSmoke: 1,
+  };
+  world.resetEffects();
+  world.updateEffects(first, 0.04, true);
+  world.updateEffects(second, 0.04, true);
+  const before = contacts(first),
+    after = contacts(second),
+    skids = world.scene.getObjectByName("skid-marks"),
+    matrix = new Matrix4();
+  for (let i = 0; i < 2; i++) {
+    skids.getMatrixAt(i + 2, matrix);
+    const ends = [
+      new Vector3(0, -0.4, 0).applyMatrix4(matrix),
+      new Vector3(0, 0.4, 0).applyMatrix4(matrix),
+    ];
+    assert(Math.min(...ends.map((p) => p.distanceTo(before[i]))) < 1e-5);
+    assert(
+      Math.min(...ends.map((p) => p.distanceTo(after[i]))) < 1e-5,
+      "the new segment must end at its own tire, even during yaw change",
+    );
+  }
+});
+test("first skid segments trail the rear tires and smoke uses the wheel geometry", async () => {
+  const { Matrix4, Vector3 } = await import("three");
+  const car = { x: 0, z: 0, yaw: 0, vx: 0, vz: 25, speed: 25, tireSmoke: 1 };
+  world.resetEffects();
+  world.updateEffects(car, 0.04, true);
+  const matrix = new Matrix4();
+  world.scene.getObjectByName("skid-marks").getMatrixAt(0, matrix);
+  const ends = [
+    new Vector3(0, -0.4, 0).applyMatrix4(matrix),
+    new Vector3(0, 0.4, 0).applyMatrix4(matrix),
+  ];
+  assert(
+    Math.max(...ends.map((p) => p.z)) <= -1.3 + 1e-6,
+    "moving tire marks must not be painted ahead of the contact patch",
+  );
+  const smoke = [];
+  world.scene.traverse((o) => {
+    if (o.name === "tire-smoke" && o.visible) smoke.push(o);
+  });
+  const rear = world.wheels.filter((w) => w.position.z < 0);
+  for (let i = 0; i < 2; i++) {
+    assert(Math.abs(smoke[i].position.x - rear[i].position.x) < 1e-8);
+    assert(Math.abs(smoke[i].position.z - rear[i].position.z) < 1e-8);
+  }
+});
+test("trail breaks and inactive gaps never connect tire marks across a teleport", async () => {
+  const { Matrix4, Vector3 } = await import("three");
+  for (const interrupt of [
+    () => world.breakEffectsTrail(),
+    (s) => world.updateEffects(s, 0.1, false),
+  ]) {
+    world.resetEffects();
+    const s = { x: 0, z: 0, yaw: 0, vx: 0, vz: 10, speed: 10, tireSmoke: 1 };
+    world.updateEffects(s, 0.04, true);
+    interrupt(s);
+    world.updateEffects({ ...s, x: 500, z: 500 }, 0.04, true);
+    const matrix = new Matrix4();
+    world.scene.getObjectByName("skid-marks").getMatrixAt(2, matrix);
+    assert(
+      new Vector3().setFromMatrixColumn(matrix, 1).length() * 0.8 < 0.5,
+      "resuming emission must start a fresh short segment",
+    );
+    assert.equal(
+      world.scene.getObjectByName("skid-marks").count,
+      4,
+      "breaking a trail must preserve existing skid marks",
+    );
+  }
+});

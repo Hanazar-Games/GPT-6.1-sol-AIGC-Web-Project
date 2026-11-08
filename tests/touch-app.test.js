@@ -121,3 +121,42 @@ test("touch burnout can be held and cancellation releases the brake and throttle
   env.tick(0.1);
   assert.equal(state().car.speed, 0);
 });
+test("unexpected handbrake capture loss does not queue braking or release another throttle source", () => {
+  env.click("start");
+  env.key("KeyW");
+  const brake = env.buttons.find((b) => b.dataset.key === "Space");
+  env.event(brake, "pointerdown", { pointerId: 31, button: 0 });
+  env.event(brake, "lostpointercapture", { pointerId: 31 });
+  assert(!brake.classList.contains("pressed"));
+  env.tick(0.05);
+  assert.equal(
+    state().car.handbrake,
+    0,
+    "an interrupted gesture before a frame must not reach physics",
+  );
+  assert(state().car.speed > 0, "capture loss must preserve keyboard throttle");
+  env.windowEvent("pointerup", { pointerId: 31 });
+  env.key("KeyW", "keyup");
+});
+test("normal touch release followed by lost capture preserves a tap; cancelled touches leave none", () => {
+  env.click("start");
+  const brake = env.buttons.find((b) => b.dataset.key === "Space");
+  env.event(brake, "pointerdown", { pointerId: 32, button: 0 });
+  env.event(brake, "pointerup", { pointerId: 32 });
+  env.windowEvent("pointerup", { pointerId: 32 });
+  env.event(brake, "lostpointercapture", { pointerId: 32 });
+  env.tick(0.05);
+  assert(
+    state().car.handbrake > 0.2,
+    "normal capture cleanup must not swallow a completed tap",
+  );
+  for (let i = 0; i < 12; i++) env.tick(0.05);
+  assert(state().car.handbrake < 0.05);
+  assert(!brake.classList.contains("pressed"));
+  env.click("touch-reset");
+  env.event(brake, "pointerdown", { pointerId: 33, button: 0 });
+  env.event(brake, "pointercancel", { pointerId: 33 });
+  env.event(brake, "lostpointercapture", { pointerId: 33 });
+  env.tick(0.05);
+  assert.equal(state().car.handbrake, 0);
+});

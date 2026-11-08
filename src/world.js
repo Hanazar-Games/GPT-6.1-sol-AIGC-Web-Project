@@ -444,10 +444,19 @@ skids.name = "skid-marks";
 scene.add(skids);
 let skidIndex = 0,
   emitTime = 0;
+const rearContacts = wheels
+  .filter((w) => w.position.z < 0)
+  .map((w) => w.position.clone());
+const lastTracks = rearContacts.map(() => ({ x: 0, z: 0 }));
+let connectedTracks = false;
+export function breakEffectsTrail() {
+  emitTime = 0;
+  connectedTracks = false;
+}
 export function resetEffects() {
   skidIndex = 0;
   smokeIndex = 0;
-  emitTime = 0;
+  breakEffectsTrail();
   skids.count = 0;
   for (const p of smoke) {
     p.life = 0;
@@ -467,7 +476,7 @@ export function updateEffects(s, dt, active) {
     p.m.material.opacity = Math.max(0, p.life / p.ttl) * p.opacity;
   }
   if (!active) {
-    emitTime = 0;
+    breakEffectsTrail();
     return;
   }
   const intensity = Math.max(0, Math.min(1, s.tireSmoke ?? 1));
@@ -475,10 +484,11 @@ export function updateEffects(s, dt, active) {
   if (emitTime < 0.06 - intensity * 0.035) return;
   const interval = emitTime;
   emitTime = 0;
-  const markYaw = Math.hypot(s.vx, s.vz) > 0.1 ? Math.atan2(s.vx, s.vz) : s.yaw;
-  for (const side of [-1, 1]) {
-    const x = s.x + Math.sin(s.yaw) * -1.3 + Math.cos(s.yaw) * side * 0.85,
-      z = s.z + Math.cos(s.yaw) * -1.3 - Math.sin(s.yaw) * side * 0.85;
+  for (let i = 0; i < rearContacts.length; i++) {
+    const contact = rearContacts[i],
+      side = Math.sign(contact.x),
+      x = s.x + Math.sin(s.yaw) * contact.z + Math.cos(s.yaw) * contact.x,
+      z = s.z + Math.cos(s.yaw) * contact.z - Math.sin(s.yaw) * contact.x;
     const p = smoke[smokeIndex++ % smoke.length];
     p.ttl = 1.2 + intensity * 0.6;
     p.life = p.ttl;
@@ -490,12 +500,23 @@ export function updateEffects(s, dt, active) {
     p.vz = s.vz * 0.08 - Math.sin(s.yaw) * side * 0.25;
     p.m.position.set(x, 0.35, z);
     p.m.scale.setScalar(p.size);
-    dummy.position.set(x, 0.09, z);
+    // Connect each tire's actual successive ground contacts. The first segment
+    // falls behind the tire along travel, rather than straddling its leading edge.
+    const previousX = connectedTracks ? lastTracks[i].x : x - s.vx * interval,
+      previousZ = connectedTracks ? lastTracks[i].z : z - s.vz * interval,
+      dx = x - previousX,
+      dz = z - previousZ,
+      length = Math.hypot(dx, dz),
+      markYaw = length > 0.01 ? Math.atan2(dx, dz) : s.yaw;
+    dummy.position.set((previousX + x) / 2, 0.09, (previousZ + z) / 2);
     dummy.rotation.set(-Math.PI / 2, 0, markYaw);
-    dummy.scale.set(1, Math.max(0.18, s.speed * interval) / 0.8, 1);
+    dummy.scale.set(1, Math.max(0.18, length) / 0.8, 1);
     dummy.updateMatrix();
     skids.setMatrixAt(skidIndex++ % 1800, dummy.matrix);
     skids.count = Math.min(skidIndex, 1800);
+    lastTracks[i].x = x;
+    lastTracks[i].z = z;
   }
+  connectedTracks = true;
   skids.instanceMatrix.needsUpdate = true;
 }
