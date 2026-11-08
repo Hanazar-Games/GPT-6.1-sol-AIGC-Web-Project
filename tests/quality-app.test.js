@@ -35,7 +35,7 @@ test("quality changes persist, pause the drive and restore gameplay without losi
   assert(state().paused);
   const tab = env.key("Tab");
   assert(tab.defaultPrevented);
-  assert.equal(env.document.activeElement.dataset.quality, "auto");
+  assert.equal(env.document.activeElement.dataset.handling, "steady");
   const elapsed = state().elapsed;
   env.tick(3);
   assert.equal(state().elapsed, elapsed);

@@ -11,6 +11,33 @@ export function drivingFeedback(car, offroad = false) {
     brake = car.burnoutActive
       ? 1
       : clamp(Math.max(car.serviceBrake, car.handbrake), 0, 1);
+  const status = car.burningOut
+    ? "BURNOUT"
+    : offroad
+      ? "OFF ROAD"
+      : brake > 0.15
+        ? "BRAKING"
+        : car.speed > 3 && throttle < 0.12
+          ? car.drifting
+            ? "RECOVER"
+            : "COAST"
+          : car.drifting
+            ? "SLIDING"
+            : "GRIP";
+  const hints = {
+    GRIP: "加速后转向，短按手刹起漂",
+    SLIDING: "稳住油门，轻调方向保持角度",
+    RECOVER: "松开方向，让后轮恢复抓地",
+    COAST: "补油加速，准备下一个弯",
+    BRAKING:
+      car.handbrake > 0.15
+        ? car.speed < 3
+          ? "松开手刹即可起步"
+          : "松开手刹，补油接住侧滑"
+        : "控制入弯速度，准备转向",
+    BURNOUT: "松开烧胎键，给油起步",
+    "OFF ROAD": "回到路面，必要时使用回正",
+  };
   return {
     angle:
       degrees > 0
@@ -18,18 +45,7 @@ export function drivingFeedback(car, offroad = false) {
         : "ANGLE 00°",
     throttle,
     brake,
-    status: car.burningOut
-      ? "BURNOUT"
-      : offroad
-        ? "OFF ROAD"
-        : brake > 0.15
-          ? "BRAKING"
-          : car.speed > 3 && throttle < 0.12
-            ? car.drifting
-              ? "RECOVER"
-              : "COAST"
-            : car.drifting
-              ? "SLIDING"
-              : "GRIP",
+    status,
+    hint: hints[status],
   };
 }

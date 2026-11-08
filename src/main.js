@@ -34,6 +34,7 @@ import { Drivetrain, REDLINE_RPM } from "./drivetrain.js";
 import { drivingCameraHeading } from "./camera.js";
 import { VehiclePresentation } from "./presentation.js";
 import { drivingFeedback } from "./feedback.js";
+import { handlingProfile } from "./handling.js";
 const $ = (id) => document.getElementById(id);
 let renderer;
 try {
@@ -79,6 +80,7 @@ let playing = false,
   paused = false,
   mode = preferences.mode,
   cameraMode = preferences.camera,
+  handlingMode = preferences.handling,
   sessionSaved = false,
   personalBestAtStart = 0,
   score = new DriftScore(),
@@ -123,6 +125,7 @@ let dialogKind = null;
 let onDialog = () => {};
 function dialog(kicker, title, body, action, callback) {
   $("quality-options").classList.add("hidden");
+  $("handling-options").classList.add("hidden");
   $("dialog-kicker").textContent = kicker;
   $("dialog-title").textContent = title;
   $("dialog-body").innerHTML = body;
@@ -197,29 +200,49 @@ function updateQualityControls() {
     button.classList.toggle("selected", selected);
     button.setAttribute("aria-pressed", String(selected));
   }
+  for (const button of document.querySelectorAll("[data-handling]")) {
+    const selected = button.dataset.handling === handlingMode;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  }
+  const label = handlingProfile(handlingMode).label;
+  $("handling-label").textContent = `${label} ↗`;
+  $("session-mode").textContent =
+    `${mode === "free" ? "FREE RUN / 自由漂移" : "TIME ATTACK / 限时挑战"} · ${label}`;
   $("quality").setAttribute(
     "aria-label",
-    `画质设置：${qualityLabels[quality.mode]}`,
+    `驾驶设置：${label}；画质：${qualityLabels[quality.mode]}`,
   );
-  $("quality").title = `画质：${qualityLabels[quality.mode]}`;
+  $("quality").title = `驾驶：${label} / 画质：${qualityLabels[quality.mode]}`;
 }
 function showQuality() {
+  if (dialogKind === "quality" || dialogKind === "result") return;
   const resumeAfter = playing && !paused;
+  const returnToPause = playing && paused && dialogKind === "pause";
   if (resumeAfter) togglePause();
   dialogKind = "quality";
   dialog(
-    "FIND YOUR FLOW / 画质设置",
-    "让每个弯道更顺畅。",
-    "<p>自动适应设备表现，或选择你偏好的清晰度。切换立即生效。</p>",
-    resumeAfter ? "继续驾驶" : "完成",
+    "FIND YOUR FLOW / 驾驶与画面",
+    "找到你的漂移节奏。",
+    "<p>稳健适合熟悉路线；均衡兼顾角度与响应；大角度适合练习更深的侧滑。选择会自动保留。</p>",
+    resumeAfter ? "继续驾驶" : returnToPause ? "返回暂停" : "完成",
     () => {
       if (resumeAfter) resume();
+      else if (returnToPause) showPauseDialog();
     },
   );
   $("quality-options").classList.remove("hidden");
+  $("handling-options").classList.remove("hidden");
   updateQualityControls();
 }
 $("quality").onclick = showQuality;
+$("handling-shortcut").onclick = showQuality;
+for (const button of document.querySelectorAll("[data-handling]"))
+  button.onclick = () => {
+    handlingMode = handlingProfile(button.dataset.handling).id;
+    profile.setPreferences({ handling: handlingMode });
+    updateQualityControls();
+  };
 for (const button of document.querySelectorAll("[data-quality]"))
   button.onclick = () => {
     quality.setMode(button.dataset.quality);
@@ -258,6 +281,7 @@ function start() {
   personalBestAtStart = profile.best(mode).score;
   playing = true;
   paused = false;
+  $("quality").disabled = false;
   audio.setActive(true);
   clock.reset(mode);
   accumulator = 0;
@@ -278,8 +302,7 @@ function start() {
   $("hud").classList.remove("hidden");
   $("overlay").classList.add("hidden");
   $("timer").classList.toggle("hidden", mode !== "challenge");
-  $("session-mode").textContent =
-    mode === "free" ? "FREE RUN / 自由漂移" : "TIME ATTACK / 限时挑战";
+  updateQualityControls();
   $("touch").classList.toggle("hidden", !touchDevice());
   $("pause").disabled = false;
   $("world").focus({ preventScroll: true });
@@ -307,6 +330,7 @@ function menu() {
   closeDialog();
   $("start").focus({ preventScroll: true });
   $("pause").disabled = true;
+  $("quality").disabled = false;
 }
 function resume() {
   if (contextLost) return;
@@ -327,6 +351,9 @@ function togglePause() {
   audio.setActive(false);
   clearInput();
   $("touch").classList.add("hidden");
+  showPauseDialog();
+}
+function showPauseDialog() {
   dialogKind = "pause";
   dialog(
     "TAKE A BREATHER",
@@ -513,6 +540,7 @@ function finish() {
   sessionSaved = true;
   dialogKind = "result";
   $("pause").disabled = true;
+  $("quality").disabled = true;
   saveBest();
   const persistent = profile.recordSession({
     mode,
@@ -550,7 +578,7 @@ function step(dt) {
   const input = controls(),
     road = nearestRoad(carState.x, carState.z);
   if (keys.advance(dt)) syncInputButtons();
-  stepCar(carState, input, dt, road);
+  stepCar(carState, input, dt, road, handlingMode);
   const after = nearestRoad(carState.x, carState.z);
   const announceImpact = carState.collisionCooldown === 0;
   if (resolveBarrier(carState, after, HALF_WIDTH)) {
@@ -678,6 +706,7 @@ function updateHUD(dt) {
   );
   $("grip").textContent = feedback.status;
   $("slip-angle").textContent = feedback.angle;
+  $("driving-hint").textContent = feedback.hint;
   for (const name of ["throttle", "brake"]) {
     const value = feedback[name] * 100;
     $(name + "-input").style.width = value + "%";
@@ -830,6 +859,7 @@ window.__DRIFT__ = {
       renderedFrames,
       resolution: quality.ratio,
       quality: quality.mode,
+      handling: handlingMode,
     };
   },
 };

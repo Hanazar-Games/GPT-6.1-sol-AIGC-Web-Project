@@ -1312,6 +1312,77 @@ body {
   display: grid;
   gap: 10px;
 }
+.setup-shortcut {
+  margin-top: 15px;
+  font-size: 12px;
+}
+.settings-heading {
+  margin: 14px 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #d2dfd8;
+}
+.settings-heading small {
+  margin-left: 8px;
+  color: #859b8d;
+  font-size: 9px;
+  letter-spacing: 1px;
+}
+.handling-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.handling-cards button {
+  padding: 13px 9px;
+  text-align: left;
+  background: #ffffff04;
+  border: 1px solid #ffffff18;
+  border-radius: 4px;
+}
+.handling-cards button.selected {
+  border-color: #b8ed5080;
+  background: #b8ed500b;
+}
+.handling-cards b {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+}
+.handling-cards .selected b {
+  color: var(--acid);
+}
+.handling-cards b small {
+  font-size: 8px;
+  font-weight: 400;
+  color: #859b8d;
+}
+.handling-cards span {
+  display: block;
+  margin-top: 8px;
+  color: #8da397;
+  font-size: 9px;
+  line-height: 1.6;
+}
+.driving-hint {
+  max-width: 210px;
+  min-height: 28px;
+  margin: 8px 0 0;
+  color: #c4d1c9;
+  font-size: 10px;
+  line-height: 1.4;
+}
+@media (max-width: 700px) {
+  .driving-hint {
+    max-width: 145px;
+    font-size: 9px;
+  }
+}
+@media (max-height: 530px) {
+  .driving-hint {
+    display: none;
+  }
+}
 .quality-options button {
   display: block;
   text-align: left;

@@ -1,4 +1,5 @@
 import { QUALITY_MODES } from "./quality.js";
+import { HANDLING_IDS } from "./handling.js";
 export const PROFILE_KEY = "midnight-driver-v1";
 export const CAR_COLORS = ["#b8ed50", "#f66b43", "#c3c9d6", "#a78bfa"];
 const isMode = (mode) => mode === "free" || mode === "challenge";
@@ -27,6 +28,9 @@ const preferences = (value) => ({
   color: CAR_COLORS.includes(value?.color) ? value.color : CAR_COLORS[0],
   camera: [0, 1, 2].includes(value?.camera) ? value.camera : 0,
   quality: QUALITY_MODES.includes(value?.quality) ? value.quality : "auto",
+  handling: HANDLING_IDS.includes(value?.handling)
+    ? value.handling
+    : "balanced",
   mode: isMode(value?.mode) ? value.mode : "free",
 });
 function readSaved(storage) {
@@ -171,6 +175,7 @@ export class DriverProfile {
     if ([0, 1, 2].includes(patch.camera)) next.camera = patch.camera;
     if (isMode(patch.mode)) next.mode = patch.mode;
     if (QUALITY_MODES.includes(patch.quality)) next.quality = patch.quality;
+    if (HANDLING_IDS.includes(patch.handling)) next.handling = patch.handling;
     if (JSON.stringify(current) === JSON.stringify(next))
       return this.persistent;
     for (const key of Object.keys(next))

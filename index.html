@@ -78,8 +78,8 @@
         ><button
           id="quality"
           class="icon-button"
-          title="画质设置"
-          aria-label="画质设置"
+          title="驾驶与画面设置"
+          aria-label="驾驶与画面设置"
         >
           ⚙</button
         ><button
@@ -109,6 +109,9 @@
           自由漂移 <small>FREE RUN</small></button
         ><button data-mode="challenge">限时挑战 <small>120 SEC</small></button>
       </div>
+      <button id="handling-shortcut" class="text-button setup-shortcut">
+        驾驶调校 <span id="handling-label">均衡 ↗</span>
+      </button>
       <div class="best">
         <span id="best-label">FREE RUN BEST</span><b id="menu-best">000000</b
         ><small>DRIFT POINTS</small>
@@ -212,6 +215,7 @@
                 ></b></i
             ></span>
           </div>
+          <p id="driving-hint" class="driving-hint">加速后转向，短按手刹起漂</p>
         </div>
       </div>
       <div class="drive-help">
@@ -236,11 +240,32 @@
         <span class="eyebrow" id="dialog-kicker">DRIVER'S BRIEFING</span>
         <h2 id="dialog-title">驾驶指南</h2>
         <div
+          id="handling-options"
+          class="handling-options hidden"
+          role="group"
+          aria-label="驾驶调校"
+        >
+          <h3 class="settings-heading">驾驶调校 <small>DRIVING FEEL</small></h3>
+          <div class="handling-cards">
+            <button data-handling="steady">
+              <b>稳健</b><span>小角度 · 渐进换向</span>
+            </button>
+            <button data-handling="balanced">
+              <b>均衡 <small>推荐</small></b
+              ><span>角度与响应兼顾</span>
+            </button>
+            <button data-handling="wide">
+              <b>大角度</b><span>更深侧滑 · 进阶挑战</span>
+            </button>
+          </div>
+        </div>
+        <div
           id="quality-options"
           class="quality-options hidden"
           role="group"
           aria-label="画质档位"
         >
+          <h3 class="settings-heading">画质 <small>GRAPHICS</small></h3>
           <button data-quality="auto">
             <b>自动 <small>AUTO</small></b
             ><span>根据设备表现调整画面清晰度</span>

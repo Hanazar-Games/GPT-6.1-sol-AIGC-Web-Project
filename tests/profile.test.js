@@ -34,6 +34,7 @@ test("mode scores and preferences survive reload without mixing free and timed r
     camera: 2,
     mode: "challenge",
     quality: "auto",
+    handling: "balanced",
   });
   reloaded.updateBest("challenge", { score: 100, bestLap: 55 });
   assert.equal(reloaded.best("challenge").score, 700);
@@ -99,6 +100,7 @@ test("corrupt stored values cannot introduce invalid dates, modes, palette or sc
     camera: 0,
     mode: "free",
     quality: "auto",
+    handling: "balanced",
   });
   assert.equal(profile.best("free").score, 0);
   assert.equal(profile.best("free").bestLap, null);
@@ -202,4 +204,24 @@ test("finishing a drive persists its record and history in a single write", () =
   assert.equal(writes, 1);
   assert.equal(new DriverProfile(store).best("free").score, 900);
   assert.equal(new DriverProfile(store).history.length, 1);
+});
+test("handling selection migrates old profiles and survives unrelated updates from another tab", () => {
+  const store = storage({
+    [PROFILE_KEY]: JSON.stringify({
+      version: 1,
+      preferences: { quality: "high" },
+      records: { free: { score: 600 } },
+    }),
+  });
+  const first = new DriverProfile(store),
+    second = new DriverProfile(store);
+  assert.equal(first.preferences.handling, "balanced");
+  first.setPreferences({ handling: "wide" });
+  second.setPreferences({ quality: "performance" });
+  const saved = new DriverProfile(store);
+  assert.equal(saved.preferences.handling, "wide");
+  assert.equal(saved.preferences.quality, "performance");
+  assert.equal(saved.best("free").score, 600);
+  saved.setPreferences({ handling: "__proto__" });
+  assert.equal(saved.preferences.handling, "wide");
 });

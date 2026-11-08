@@ -4,6 +4,7 @@ import {
   updateEngine,
   engineDriveForce,
 } from "./powertrain.js";
+import { handlingProfile } from "./handling.js";
 export const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 export const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 export const CAR_SPEC = Object.freeze({
@@ -50,6 +51,8 @@ export function createCarState(x = 0, z = 0, yaw = 0) {
     steerAssist: 0,
     driftControl: 0,
     driftTarget: 0,
+    driftIntent: 0,
+    driftManual: false,
     handbrake: 0,
     throttle: 0,
     serviceBrake: 0,
@@ -77,13 +80,14 @@ export function createCarState(x = 0, z = 0, yaw = 0) {
 }
 // Planar rigid-body / two-axle model. SI units throughout; positive body lateral
 // velocity and yaw follow the game's existing steering convention.
-export function stepCar(s, input, dt, road) {
+export function stepCar(s, input, dt, road, handling = "balanced") {
   if (!Number.isFinite(dt) || dt <= 0) return;
   const count = Math.ceil(dt * 120),
-    step = dt / count;
-  for (let i = 0; i < count; i++) integrateCar(s, input, step, road);
+    step = dt / count,
+    setup = handlingProfile(handling);
+  for (let i = 0; i < count; i++) integrateCar(s, input, step, road, setup);
 }
-function integrateCar(s, input, dt, road) {
+function integrateCar(s, input, dt, road, setup) {
   const forwardX = Math.sin(s.yaw),
     forwardZ = Math.cos(s.yaw);
   const longitudinal = s.vx * forwardX + s.vz * forwardZ;
@@ -163,21 +167,39 @@ function integrateCar(s, input, dt, road) {
   const driftEngaged =
     powerSlide &&
     (Math.abs(sideslip) > 0.12 || impendingSlide || s.driftControl > 0.4);
+  const angleLimit =
+    setup.angle <= 0.46
+      ? setup.angle
+      : 0.46 + (setup.angle - 0.46) * smooth((longitudinal - 6) / 7);
   if (driftEngaged) {
-    if (Math.abs(requestedSteer) > 0.05)
-      s.driftTarget += clamp(
-        requestedSteer * 0.46 - s.driftTarget,
-        -CAR_SPEC.driftTargetRate * dt,
-        CAR_SPEC.driftTargetRate * dt,
-      );
-    else if (Math.abs(s.driftTarget) < 0.12)
-      s.driftTarget =
-        Math.sign(sideslip) * clamp(Math.abs(sideslip), 0.2, 0.46);
+    if (Math.abs(requestedSteer) > 0.05) {
+      s.driftIntent = requestedSteer * setup.angle;
+      s.driftManual = true;
+    } else {
+      // Releasing a brief countersteer holds the angle actually reached, rather
+      // than completing a full opposite transition after the key is released.
+      const atLimit =
+        Math.abs(Math.abs(s.driftTarget) - angleLimit) < 0.01 &&
+        s.driftTarget * s.driftIntent > 0;
+      if (s.driftManual && !atLimit) s.driftIntent = s.driftTarget;
+      s.driftManual = false;
+      if (Math.abs(s.driftIntent) < 0.12)
+        s.driftIntent =
+          Math.sign(sideslip) * clamp(Math.abs(sideslip), 0.2, setup.angle);
+    }
+    // Preserve the requested slide independently of rack response, so profile
+    // changes and neutral capture approach a new angle without a target jump.
+    const target = clamp(s.driftIntent, -angleLimit, angleLimit),
+      rate = CAR_SPEC.driftTargetRate * setup.response;
+    s.driftTarget += clamp(target - s.driftTarget, -rate * dt, rate * dt);
   }
   s.driftControl +=
     ((driftEngaged ? 1 : 0) - s.driftControl) *
     (1 - Math.exp(-(driftEngaged ? 10 : 6) * dt));
-  if (!driftEngaged && s.driftControl < 0.01) s.driftTarget = 0;
+  if (!driftEngaged && s.driftControl < 0.01) {
+    s.driftTarget = s.driftIntent = 0;
+    s.driftManual = false;
+  }
   const frontTravel = Math.atan2(
       lateral + CAR_SPEC.frontAxle * s.yawRate,
       Math.max(3, longitudinal),
@@ -404,6 +426,8 @@ export function resolveBarrier(s, nearest, halfWidth) {
   s.drifting = false;
   s.driftControl = 0;
   s.driftTarget = 0;
+  s.driftIntent = 0;
+  s.driftManual = false;
   s.collisionCooldown = 0.65;
   // Always report physical contact; cooldown limits impact feedback/friction
   // and leaves the recovery interval under manual steering with self-alignment.

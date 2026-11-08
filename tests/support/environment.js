@@ -81,13 +81,17 @@ export function createEnvironment({ stored = {} } = {}) {
     }
     querySelectorAll() {
       return [
-        ...buttons.filter((button) => button.dataset.quality),
+        ...buttons.filter(
+          (button) => button.dataset.quality || button.dataset.handling,
+        ),
         ...["return-menu", "dialog-action"].map((id) => nodes.get(id)),
       ].filter((button) => button && !button.disabled);
     }
     getClientRects() {
-      return this.dataset.quality &&
-        nodes.get("quality-options").classList.contains("hidden")
+      return (this.dataset.quality &&
+        nodes.get("quality-options").classList.contains("hidden")) ||
+        (this.dataset.handling &&
+          nodes.get("handling-options").classList.contains("hidden"))
         ? []
         : [{}];
     }
@@ -115,7 +119,9 @@ export function createEnvironment({ stored = {} } = {}) {
             ? b.dataset.color
             : selector === "[data-quality]"
               ? b.dataset.quality
-              : false,
+              : selector === "[data-handling]"
+                ? b.dataset.handling
+                : false,
     );
   const html = readFileSync(
     new URL("../../index.html", import.meta.url),
