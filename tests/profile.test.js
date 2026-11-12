@@ -225,3 +225,20 @@ test("handling selection migrates old profiles and survives unrelated updates fr
   saved.setPreferences({ handling: "__proto__" });
   assert.equal(saved.preferences.handling, "wide");
 });
+test("loading an archive sorts and deduplicates history before applying the twenty-session limit", () => {
+  const history = Array.from({ length: 25 }, (_, i) => ({
+    ...entry(i, "free", i),
+    id: `run-${i}`,
+  }));
+  history.splice(4, 0, { ...history[3] });
+  const store = storage({
+    [PROFILE_KEY]: JSON.stringify({ version: 1, history }),
+  });
+  const loaded = new DriverProfile(store);
+  assert.equal(loaded.history.length, 20);
+  assert.deepEqual(
+    loaded.history.map((s) => s.at),
+    Array.from({ length: 20 }, (_, i) => 24 - i),
+  );
+  assert.equal(new Set(loaded.history.map((s) => s.id)).size, 20);
+});

@@ -115,9 +115,7 @@ export class DriverProfile {
         challenge: record(saved.records?.challenge),
       },
       legacyBest: Math.max(legacyBest, integer(saved.legacyBest)),
-      history: Array.isArray(saved.history)
-        ? saved.history.map(session).filter(Boolean).slice(0, 20)
-        : [],
+      history: mergeHistory(Array.isArray(saved.history) ? saved.history : []),
     };
   }
   get preferences() {

@@ -102,12 +102,6 @@ function updateGarageRecord() {
     mode === "free" ? "FREE RUN BEST" : "120 SEC BEST";
 }
 updateGarageRecord();
-paint.color.set(preferences.color);
-for (const button of document.querySelectorAll("[data-color]")) {
-  const selected = button.dataset.color === preferences.color;
-  button.classList.toggle("active", selected);
-  button.setAttribute("aria-pressed", String(selected));
-}
 for (const button of document.querySelectorAll("[data-mode]")) {
   const selected = button.dataset.mode === mode;
   button.classList.toggle("selected", selected);
@@ -155,7 +149,7 @@ function showHelp() {
   dialog(
     "DRIVER’S BRIEFING",
     "山路，交给你了。",
-    '<div class="control-row"><span>油门 / 刹车与倒车</span><span><kbd>W / ↑</kbd><kbd>S / ↓</kbd></span></div><div class="control-row"><span>转向</span><span><kbd>A / ←</kbd><kbd>D / →</kbd></span></div><div class="control-row"><span>手刹 / 甩尾</span><kbd>SPACE</kbd></div><div class="control-row"><span>切换镜头 / 重置车辆</span><span><kbd>C</kbd><kbd>R</kbd></span></div><p>入弯前减速，转向后短按手刹。松开手刹，及时向车尾滑出的方向反打。保持油门可以维持漂移，松开方向也能接住侧滑；左右方向调整漂移方向，反打可切换甩尾。松开油门与方向，后轮逐步恢复抓地并收车。长按手刹会锁住后轮并损失速度。连续漂移提高倍率，回正 1.6 秒后结算。撞护栏会失去当前连击。</p><p>按住 B（或低速时 W+S）原地烧胎：前轮制动、后轮空转。松开即可结束，按住 Space 会锁住后轮。触屏设备使用屏幕底部的驾驶按钮。仪表 L/R 显示漂移方向和角度，GAS/BRK 显示实际油门与制动；RECOVER 表示收车，COAST 表示松油滑行。</p>' +
+    '<div class="control-row"><span>油门 / 刹车与倒车</span><span><kbd>W / ↑</kbd><kbd>S / ↓</kbd></span></div><div class="control-row"><span>转向</span><span><kbd>A / ←</kbd><kbd>D / →</kbd></span></div><div class="control-row"><span>手刹 / 甩尾</span><kbd>SPACE</kbd></div><div class="control-row"><span>切换镜头 / 重置车辆</span><span><kbd>C</kbd><kbd>R</kbd></span></div><p>入弯前减速，转向后短按手刹。松开手刹，及时向车尾滑出的方向反打。保持油门可以维持漂移，松开方向也能接住侧滑；左右方向调整漂移方向，反打可切换甩尾。松开油门与方向，后轮逐步恢复抓地并收车。长按手刹会锁住后轮并损失速度。连续漂移提高倍率，回正 1.6 秒后结算。撞护栏会失去当前连击。</p><p>按住 B（或低速时 W+S）原地烧胎：前轮制动、后轮空转。松开即可结束，按住 Space 会锁住后轮。触屏设备使用屏幕底部的驾驶按钮。仪表 L/R 显示漂移方向和角度，GAS/BRK 显示实际油门与制动；RECOVER 表示收车，COAST 表示松油滑行。点击顶部标志会结算当前驾驶并返回车库。</p>' +
       (fullscreen.supported
         ? "<p>按 F 或在设置中切换全屏；退出全屏会暂停驾驶。</p>"
         : ""),
@@ -222,6 +216,23 @@ function updateQualityControls() {
   );
   $("quality").title = `驾驶：${label} / 画质：${qualityLabels[quality.mode]}`;
 }
+function applyGaragePreferences() {
+  const saved = profile.preferences;
+  paint.color.set(saved.color);
+  cameraMode = saved.camera;
+  handlingMode = saved.handling;
+  if (quality.mode !== saved.quality) {
+    quality.setMode(saved.quality);
+    renderer.setPixelRatio(quality.ratio);
+  }
+  for (const button of document.querySelectorAll("[data-color]")) {
+    const selected = button.dataset.color === saved.color;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  }
+  updateQualityControls();
+  renderSchedule.invalidate();
+}
 function showQuality() {
   if (dialogKind === "quality" || dialogKind === "result") return;
   const resumeAfter = playing && !paused;
@@ -259,7 +270,7 @@ for (const button of document.querySelectorAll("[data-quality]"))
     renderSchedule.invalidate();
     updateQualityControls();
   };
-updateQualityControls();
+applyGaragePreferences();
 function updateFullscreenControls() {
   $("fullscreen-help").classList.toggle("hidden", !fullscreen.supported);
   fullscreenButton.classList.toggle("hidden", !fullscreen.supported);
@@ -318,6 +329,10 @@ function saveBest() {
 function start() {
   if (contextLost) return;
   profile.refresh();
+  applyGaragePreferences();
+  // Starting is an explicit choice of this tab's selected game mode. Refresh
+  // other preferences first so that this write cannot restore stale settings.
+  profile.setPreferences({ mode });
   clearInput();
   sessionSaved = false;
   personalBestAtStart = profile.best(mode).score;
@@ -360,6 +375,8 @@ function menu() {
   saveBest();
   playing = false;
   paused = false;
+  profile.refresh();
+  applyGaragePreferences();
   car.rotation.z = 0;
   car.rotation.x = 0;
   resetEffects();
@@ -528,6 +545,21 @@ $("touch-camera").onclick = cycleCamera;
 $("touch-reset").onclick = () => {
   if (playing && !paused) reset();
 };
+$("home").addEventListener("click", (event) => {
+  if (
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey ||
+    event.altKey ||
+    event.button > 0
+  )
+    return;
+  event.preventDefault();
+  if (playing) {
+    if (!sessionSaved) finish();
+    menu();
+  } else $("start").focus({ preventScroll: true });
+});
 touchMedia.addEventListener("change", () => {
   if (!touchDevice()) {
     keys.releasePointers();
@@ -538,6 +570,7 @@ touchMedia.addEventListener("change", () => {
 addEventListener("storage", (e) => {
   if (e.key !== PROFILE_KEY) return;
   profile.refresh();
+  if (!playing) applyGaragePreferences();
   updateGarageRecord();
 });
 addEventListener("blur", () => {
