@@ -82,12 +82,21 @@ export function createEnvironment({ stored = {} } = {}) {
     querySelectorAll() {
       return [
         ...buttons.filter(
-          (button) => button.dataset.quality || button.dataset.handling,
+          (button) =>
+            button.dataset.quality ||
+            button.dataset.handling ||
+            button.id === "fullscreen",
         ),
         ...["return-menu", "dialog-action"].map((id) => nodes.get(id)),
       ].filter((button) => button && !button.disabled);
     }
     getClientRects() {
+      if (
+        this.classList.contains("hidden") ||
+        (this.id === "fullscreen" &&
+          nodes.get("display-options").classList.contains("hidden"))
+      )
+        return [];
       return (this.dataset.quality &&
         nodes.get("quality-options").classList.contains("hidden")) ||
         (this.dataset.handling &&

@@ -35,6 +35,7 @@ import { drivingCameraHeading } from "./camera.js";
 import { VehiclePresentation } from "./presentation.js";
 import { drivingFeedback } from "./feedback.js";
 import { handlingProfile } from "./handling.js";
+import { FullscreenControl } from "./fullscreen.js";
 const $ = (id) => document.getElementById(id);
 let renderer;
 try {
@@ -56,6 +57,8 @@ const camera = new T.PerspectiveCamera(48, innerWidth / innerHeight, 0.1, 1800);
 const audio = new EngineAudio();
 const drivetrain = new Drivetrain();
 const keys = new InputState();
+const fullscreen = new FullscreenControl(document);
+const fullscreenButton = $("fullscreen");
 const inputButtons = [...document.querySelectorAll("[data-key]")];
 const arrowAliases = {
   KeyW: "ArrowUp",
@@ -126,6 +129,7 @@ let onDialog = () => {};
 function dialog(kicker, title, body, action, callback) {
   $("quality-options").classList.add("hidden");
   $("handling-options").classList.add("hidden");
+  $("display-options").classList.add("hidden");
   $("dialog-kicker").textContent = kicker;
   $("dialog-title").textContent = title;
   $("dialog-body").innerHTML = body;
@@ -151,7 +155,10 @@ function showHelp() {
   dialog(
     "DRIVER’S BRIEFING",
     "山路，交给你了。",
-    '<div class="control-row"><span>油门 / 刹车与倒车</span><span><kbd>W / ↑</kbd><kbd>S / ↓</kbd></span></div><div class="control-row"><span>转向</span><span><kbd>A / ←</kbd><kbd>D / →</kbd></span></div><div class="control-row"><span>手刹 / 甩尾</span><kbd>SPACE</kbd></div><div class="control-row"><span>切换镜头 / 重置车辆</span><span><kbd>C</kbd><kbd>R</kbd></span></div><p>入弯前减速，转向后短按手刹。松开手刹，及时向车尾滑出的方向反打。保持油门可以维持漂移，松开方向也能接住侧滑；左右方向调整漂移方向，反打可切换甩尾。松开油门与方向，后轮逐步恢复抓地并收车。长按手刹会锁住后轮并损失速度。连续漂移提高倍率，回正 1.6 秒后结算。撞护栏会失去当前连击。</p><p>按住 B（或低速时 W+S）原地烧胎：前轮制动、后轮空转。松开即可结束，按住 Space 会锁住后轮。触屏设备使用屏幕底部的驾驶按钮。仪表 L/R 显示漂移方向和角度，GAS/BRK 显示实际油门与制动；RECOVER 表示收车，COAST 表示松油滑行。</p>',
+    '<div class="control-row"><span>油门 / 刹车与倒车</span><span><kbd>W / ↑</kbd><kbd>S / ↓</kbd></span></div><div class="control-row"><span>转向</span><span><kbd>A / ←</kbd><kbd>D / →</kbd></span></div><div class="control-row"><span>手刹 / 甩尾</span><kbd>SPACE</kbd></div><div class="control-row"><span>切换镜头 / 重置车辆</span><span><kbd>C</kbd><kbd>R</kbd></span></div><p>入弯前减速，转向后短按手刹。松开手刹，及时向车尾滑出的方向反打。保持油门可以维持漂移，松开方向也能接住侧滑；左右方向调整漂移方向，反打可切换甩尾。松开油门与方向，后轮逐步恢复抓地并收车。长按手刹会锁住后轮并损失速度。连续漂移提高倍率，回正 1.6 秒后结算。撞护栏会失去当前连击。</p><p>按住 B（或低速时 W+S）原地烧胎：前轮制动、后轮空转。松开即可结束，按住 Space 会锁住后轮。触屏设备使用屏幕底部的驾驶按钮。仪表 L/R 显示漂移方向和角度，GAS/BRK 显示实际油门与制动；RECOVER 表示收车，COAST 表示松油滑行。</p>' +
+      (fullscreen.supported
+        ? "<p>按 F 或在设置中切换全屏；退出全屏会暂停驾驶。</p>"
+        : ""),
     "准备好了",
     () => {},
   );
@@ -233,6 +240,7 @@ function showQuality() {
   );
   $("quality-options").classList.remove("hidden");
   $("handling-options").classList.remove("hidden");
+  $("display-options").classList.toggle("hidden", !fullscreen.supported);
   updateQualityControls();
 }
 $("quality").onclick = showQuality;
@@ -252,6 +260,40 @@ for (const button of document.querySelectorAll("[data-quality]"))
     updateQualityControls();
   };
 updateQualityControls();
+function updateFullscreenControls() {
+  $("fullscreen-help").classList.toggle("hidden", !fullscreen.supported);
+  fullscreenButton.classList.toggle("hidden", !fullscreen.supported);
+  fullscreenButton.disabled = fullscreen.pending;
+  fullscreenButton.setAttribute("aria-pressed", String(fullscreen.active));
+  fullscreenButton.setAttribute(
+    "aria-label",
+    fullscreen.active ? "退出全屏" : "全屏驾驶",
+  );
+  fullscreenButton.textContent = `${fullscreen.active ? "退出全屏" : "全屏驾驶"} · F`;
+}
+async function toggleFullscreen() {
+  if (!fullscreen.supported || fullscreen.pending) return;
+  const changing = fullscreen.toggle();
+  updateFullscreenControls();
+  try {
+    await changing;
+  } catch {
+    notify("浏览器未能切换全屏，可继续窗口驾驶", 3);
+  } finally {
+    updateFullscreenControls();
+    renderSchedule.invalidate();
+  }
+}
+fullscreenButton.onclick = toggleFullscreen;
+updateFullscreenControls();
+let previousFullscreen = fullscreen.active;
+document.addEventListener("fullscreenchange", () => {
+  const exited = previousFullscreen && !fullscreen.active;
+  previousFullscreen = fullscreen.active;
+  if (exited && playing && !paused) togglePause();
+  updateFullscreenControls();
+  resizeRenderer();
+});
 reducedMotion.addEventListener("change", () => renderSchedule.invalidate());
 function clearInput() {
   keys.clear();
@@ -449,6 +491,11 @@ addEventListener("keydown", (e) => {
     return;
   }
   const interactive = e.target.closest?.("button,a,input,select,textarea");
+  if (e.code === "KeyF" && !e.repeat && !interactive) {
+    if (fullscreen.supported) e.preventDefault();
+    toggleFullscreen();
+    return;
+  }
   if (e.code === "Enter" && !playing && !interactive) {
     e.preventDefault();
     if (!e.repeat) start();
@@ -573,7 +620,7 @@ function finish() {
   );
   $("return-menu").onclick = menu;
 }
-function step(dt) {
+function step(dt, elapsed) {
   sessionStats.bestChain = Math.max(sessionStats.bestChain, score.chain);
   const input = controls(),
     road = nearestRoad(carState.x, carState.z);
@@ -596,7 +643,7 @@ function step(dt) {
     saveBest();
     notify(`+${score.lastBank.toLocaleString()} 漂移分数已入账`);
   }
-  if (laps.observe(after.progress, clock.elapsed)) {
+  if (laps.observe(after.progress, elapsed)) {
     saveBest();
     notify(`LAP ${laps.laps} · ${formatLap(laps.last)}`, 3);
   }
@@ -747,10 +794,16 @@ function frame(now) {
       renderSchedule.invalidate();
     }
     const activeTime = clock.advance(elapsed);
-    accumulator += Math.min(activeTime, 0.25);
+    const catchUp = Math.min(activeTime, 0.25);
+    // Timestamp each completed physics tick inside the active frame, including
+    // the carried fraction. Stalls retain wall time but only simulate the last
+    // bounded catch-up window; crossings must not all inherit the frame end.
+    let simulatedAt = clock.elapsed - catchUp - accumulator;
+    accumulator += catchUp;
     let count = 0;
     while (accumulator >= 1 / 120 && count++ < 30) {
-      step(1 / 120);
+      simulatedAt += 1 / 120;
+      step(1 / 120, simulatedAt);
       simulated = true;
       accumulator -= 1 / 120;
       if (paused) {
@@ -806,7 +859,7 @@ function frame(now) {
     }
   }
 }
-addEventListener("resize", () => {
+function resizeRenderer() {
   renderer.setPixelRatio(
     quality.resize({
       width: innerWidth,
@@ -818,7 +871,8 @@ addEventListener("resize", () => {
   renderer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
-});
+}
+addEventListener("resize", resizeRenderer);
 $("world").addEventListener("webglcontextlost", (event) => {
   event.preventDefault();
   contextLost = true;

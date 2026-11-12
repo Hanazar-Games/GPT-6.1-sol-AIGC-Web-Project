@@ -1316,6 +1316,16 @@ body {
   margin-top: 15px;
   font-size: 12px;
 }
+.display-options {
+  margin-top: 16px;
+}
+.display-options button {
+  width: 100%;
+  min-height: 44px;
+}
+:root:fullscreen {
+  background: #0a101a;
+}
 .settings-heading {
   margin: 14px 0 10px;
   font-size: 12px;

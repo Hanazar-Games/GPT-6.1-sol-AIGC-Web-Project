@@ -221,6 +221,7 @@
       <div class="drive-help">
         <kbd>W A S D</kbd> 驾驶 <kbd>SPACE</kbd> 手刹 <kbd>C</kbd> 镜头
         <kbd>B</kbd> 烧胎 <kbd>R</kbd> 回到赛道 <kbd>ESC</kbd> 暂停
+        <span id="fullscreen-help" class="hidden"><kbd>F</kbd> 全屏</span>
       </div>
     </div>
     <div id="notice" class="notice" role="status" aria-live="polite"></div>
@@ -277,6 +278,16 @@
           <button data-quality="high">
             <b>精细 <small>DETAIL</small></b
             ><span>更清晰的画面，适合性能充足的设备</span>
+          </button>
+        </div>
+        <div id="display-options" class="display-options hidden">
+          <button
+            id="fullscreen"
+            class="secondary hidden"
+            aria-pressed="false"
+            aria-keyshortcuts="F"
+          >
+            全屏驾驶 · F
           </button>
         </div>
         <div id="dialog-body"></div>
