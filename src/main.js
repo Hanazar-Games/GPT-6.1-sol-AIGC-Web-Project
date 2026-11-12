@@ -119,8 +119,10 @@ const touchMedia = matchMedia("(any-pointer: coarse)");
 const touchDevice = () => touchMedia.matches;
 let previousFocus;
 let dialogKind = null;
+let dialogNeedsContext = false;
 let onDialog = () => {};
-function dialog(kicker, title, body, action, callback) {
+function dialog(kicker, title, body, action, callback, needsContext = false) {
+  dialogNeedsContext = needsContext;
   $("quality-options").classList.add("hidden");
   $("handling-options").classList.add("hidden");
   $("display-options").classList.add("hidden");
@@ -128,19 +130,22 @@ function dialog(kicker, title, body, action, callback) {
   $("dialog-title").textContent = title;
   $("dialog-body").innerHTML = body;
   $("dialog-action").innerHTML = action + "<span>↗</span>";
+  $("dialog-action").disabled = contextLost && dialogNeedsContext;
   previousFocus = document.activeElement;
   $("overlay").classList.remove("hidden");
-  $("dialog-action").focus();
+  if ($("dialog-action").disabled) $("return-menu")?.focus();
+  else $("dialog-action").focus();
   onDialog = callback;
 }
 function closeDialog() {
   $("overlay").classList.add("hidden");
   dialogKind = null;
+  dialogNeedsContext = false;
   if (playing) $("world").focus({ preventScroll: true });
   else previousFocus?.focus({ preventScroll: true });
 }
 $("dialog-action").onclick = () => {
-  if (contextLost) return;
+  if (contextLost && dialogNeedsContext) return;
   closeDialog();
   onDialog();
 };
@@ -248,6 +253,7 @@ function showQuality() {
       if (resumeAfter) resume();
       else if (returnToPause) showPauseDialog();
     },
+    resumeAfter,
   );
   $("quality-options").classList.remove("hidden");
   $("handling-options").classList.remove("hidden");
@@ -416,10 +422,11 @@ function showPauseDialog() {
   dialogKind = "pause";
   dialog(
     "TAKE A BREATHER",
-    "暂停，夜还很长。",
+    contextLost ? "3D 场景暂时中断。" : "暂停，夜还很长。",
     '<p>你的漂移记录已保留。准备好后，继续征服弯道。</p><button class="secondary" id="return-menu">结束驾驶 / 查看成绩</button>',
-    "继续驾驶",
+    contextLost ? "等待场景恢复" : "继续驾驶",
     resume,
+    true,
   );
   $("return-menu").onclick = finish;
 }
@@ -650,6 +657,7 @@ function finish() {
     `${recordBadge}<span class="eyebrow">TOTAL DRIFT POINTS</span><div class="result-score">${format(score.total)}</div><div class="result-grid"><div><span>驾驶时间</span><b>${formatLap(clock.elapsed)}</b></div><div><span>行驶距离</span><b>${(sessionStats.distance / 1000).toFixed(2)} km</b></div><div><span>最高速度</span><b>${Math.round(sessionStats.topSpeed * 3.6)} km/h</b></div><div><span>最佳连击</span><b>${Math.floor(sessionStats.bestChain).toLocaleString()}</b></div><div><span>完成圈数</span><b>${laps.laps}</b></div><div><span>最佳圈速</span><b>${formatLap(laps.best)}</b></div></div><p>本模式最高分 ${format(best)}<br><span class="save-status">${persistent ? "驾驶档案已保存到此浏览器" : "浏览器存储不可用，档案仅在本次打开时保留"}</span></p><button class="secondary" id="return-menu">返回车库</button>`,
     "再跑一次",
     start,
+    true,
   );
   $("return-menu").onclick = menu;
 }
@@ -864,10 +872,9 @@ function frame(now) {
   }
   setBrake(
     playing &&
-      (keys.has("Space") ||
-        keys.has("KeyS") ||
-        keys.has("ArrowDown") ||
-        keys.has("KeyB")),
+      (carState.burnoutActive ||
+        carState.serviceBrake > 0.15 ||
+        carState.handbrake > 0.15),
   );
   updateEffects(
     renderState,
@@ -910,14 +917,19 @@ $("world").addEventListener("webglcontextlost", (event) => {
   event.preventDefault();
   contextLost = true;
   if (playing && !paused) togglePause();
+  else if (playing && dialogKind === "quality") showPauseDialog();
   $("start").disabled = true;
-  $("dialog-action").disabled = true;
+  $("dialog-action").disabled = dialogNeedsContext;
 });
 $("world").addEventListener("webglcontextrestored", () => {
   contextLost = false;
   renderSchedule.invalidate();
   $("start").disabled = false;
   $("dialog-action").disabled = false;
+  if (dialogKind === "pause") {
+    $("dialog-title").textContent = "暂停，夜还很长。";
+    $("dialog-action").innerHTML = "继续驾驶<span>↗</span>";
+  }
   notify("3D 场景已恢复，可以继续驾驶", 4);
 });
 resetCamera();

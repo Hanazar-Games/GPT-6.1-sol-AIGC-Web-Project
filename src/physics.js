@@ -55,6 +55,7 @@ export function createCarState(x = 0, z = 0, yaw = 0) {
     driftManual: false,
     handbrake: 0,
     throttle: 0,
+    reverseThrottle: 0,
     serviceBrake: 0,
     longitudinalAccel: 0,
     lateralAccel: 0,
@@ -108,6 +109,10 @@ function integrateCar(s, input, dt, road, setup) {
   s.throttle +=
     (throttle - s.throttle) *
     (1 - Math.exp(-(throttle > s.throttle ? 7 : 14) * dt));
+  const reverseDrive = longitudinal <= 1 ? reverse : 0;
+  s.reverseThrottle +=
+    (reverseDrive - s.reverseThrottle) *
+    (1 - Math.exp(-(reverseDrive > s.reverseThrottle ? 7 : 14) * dt));
   s.serviceBrake += (brakeRequest - s.serviceBrake) * (1 - Math.exp(-16 * dt));
   s.handbrake +=
     (pedal(input.brake) - s.handbrake) *
@@ -272,7 +277,7 @@ function integrateCar(s, input, dt, road, setup) {
     s,
     s.rearWheelSpeed,
     s.throttle,
-    reverse > 0 && longitudinal <= 1 ? reverse : 0,
+    s.gear < 0 ? s.reverseThrottle : 0,
   );
   if (reverse > 0 && longitudinal > 1) motorForce = 0;
   let frontX = 0,

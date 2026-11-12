@@ -336,3 +336,31 @@ test("new tire smoke follows the displayed rear contacts during an interpolated 
   env.click("return-menu");
   env.click("return-menu");
 });
+test("powered reversing shows effective gas and leaves brake lights off until brakes are applied", () => {
+  env.click("start");
+  env.key("KeyS");
+  for (let i = 0; i < 40; i++) env.tick(0.05);
+  assert.equal(env.nodes.get("gear").textContent, "R");
+  assert.equal(env.nodes.get("grip").textContent, "REVERSING");
+  assert(parseFloat(env.nodes.get("throttle-input").style.width) > 95);
+  assert.equal(env.nodes.get("brake-input").style.width, "0%");
+  const lights = [];
+  world.car.traverse((o) => {
+    if (o.name === "rear-brake-light") lights.push(o);
+  });
+  assert.equal(lights.length, 2);
+  assert(lights.every((o) => o.material.color.getHexString() === "ff3c42"));
+  env.key("Space");
+  env.tick(0.1);
+  assert(
+    lights.every((o) => o.material.color.getHexString() === "ff8d78"),
+    "the lamp must follow actual brake application",
+  );
+  env.key("KeyS", "keyup");
+  env.key("Space", "keyup");
+  for (let i = 0; i < 10; i++) env.tick(0.05);
+  assert(parseFloat(env.nodes.get("throttle-input").style.width) < 1);
+  env.key("Escape");
+  env.click("return-menu");
+  env.click("return-menu");
+});

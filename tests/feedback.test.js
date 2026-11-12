@@ -56,3 +56,22 @@ test("feedback follows effective pedals and distinguishes slide, recovery, coast
   assert.equal(drivingFeedback(car, true).status, "OFF ROAD");
   assert.equal(drivingFeedback(createCarState()).status, "GRIP");
 });
+test("reverse pedal feedback distinguishes powered reversing, coasting and a forward direction change", () => {
+  const car = {
+    ...createCarState(),
+    gear: -1,
+    vz: -4,
+    speed: 4,
+    reverseThrottle: 0.8,
+  };
+  const powered = drivingFeedback(car);
+  assert.equal(powered.throttle, 0.8);
+  assert.equal(powered.status, "REVERSING");
+  assert.equal(powered.brake, 0);
+  car.reverseThrottle = 0;
+  assert.equal(drivingFeedback(car).status, "REVERSE");
+  assert(drivingFeedback(car).hint.includes("倒车滑行"));
+  car.gear = 1;
+  car.throttle = 0.8;
+  assert(drivingFeedback(car).hint.includes("减速后前进"));
+});

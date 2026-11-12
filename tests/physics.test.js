@@ -148,3 +148,28 @@ test("guardrail contact clears the captured drift target and allows deliberate e
     ),
   );
 });
+test("reverse drive builds and releases progressively while partial reverse stays distinct", () => {
+  const full = createCarState(),
+    partial = createCarState();
+  stepCar(full, { reverse: 1 }, 1 / 120, road);
+  assert(full.reverseThrottle > 0 && full.reverseThrottle < 0.1);
+  simulate(full, { reverse: 1 }, 2);
+  simulate(partial, { reverse: 0.35 }, 2);
+  assert(full.gear === -1 && full.vz < 0 && full.speed > partial.speed + 1);
+  const before = full.speed;
+  simulate(full, {}, 1);
+  assert(full.reverseThrottle < 0.01 && full.speed < before && full.vz < 0);
+  simulate(full, { throttle: 1 }, 3);
+  assert(
+    full.gear > 0 && full.vz > 0,
+    "forward input must slow reverse motion then drive forward",
+  );
+});
+test("braking a slow forward roll transitions to reverse without stalling at the gear boundary", () => {
+  const car = createCarState();
+  car.vz = car.speed = 0.8;
+  car.gear = 1;
+  simulate(car, { reverse: 1 }, 2);
+  assert.equal(car.gear, -1);
+  assert(car.vz < -0.5 && car.vz >= -9);
+});

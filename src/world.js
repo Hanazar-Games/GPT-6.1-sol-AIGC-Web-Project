@@ -324,7 +324,8 @@ const headMat = new T.MeshBasicMaterial({ color: "#effff1" }),
   tailMat = new T.MeshBasicMaterial({ color: "#ff3c42" });
 for (const s of [-1, 1]) {
   box(0.61, 0.17, 0.08, headMat, s * 0.56, 0.78, 2.1, car);
-  box(0.7, 0.13, 0.08, tailMat, s * 0.54, 0.77, -2.1, car);
+  box(0.7, 0.13, 0.08, tailMat, s * 0.54, 0.77, -2.1, car).name =
+    "rear-brake-light";
   box(0.35, 0.08, 0.08, lime, s * 0.7, 0.4, 2.1, car);
 }
 const plate = new T.Mesh(
